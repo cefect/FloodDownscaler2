@@ -11,7 +11,7 @@ split definitions from parameters (which should go in the case study)
 see ./example
 
 ## Related projects
-[FloodDownscaler](https://github.com/cefect/FloodDownscaler): original repo for HESS publication work
+[FloodDownscaler](https://github.com/cefect/FloodDownscaler): original repo for HESS publication work. decided to make this new repo as something shareable and more streamlined. 
 
 [FloodRescaler](https://github.com/cefect/FloodRescaler): public repo with QGIS processing script port (and aggregation tools)
 
@@ -23,22 +23,7 @@ see ./example
 
 [2112_agg_pub](https://github.com/cefect/2112_agg_pub): public repo of analysis for aggregation paper. 
 
-## Submodules
 
-PYTHONPATH:
-PROJECT_DIR_NAME
-PROJECT_DIR_NAME\whitebox-tools
-PROJECT_DIR_NAME\whitebox-tools\target\release (need to build first)
-
- 
-
-whitebox tools (cefect's fork)
-`git submodule https://github.com/cefect/whitebox-tools.git`
-
-    v2.2.0
-        git switch c8d03fc3154a34d2d2904491ee36a7ab8239289c --detached
-        
-    need to build this using rust (see below)
     
 
 
@@ -47,13 +32,37 @@ whitebox tools (cefect's fork)
 
 build a python environment per ./environment.yml
 
-build whitebox-tools using rust
-    cargo build --release
-    takes a while
-    
-add submodules to pythonpath (see above)
-
 create and customize a ./definitions.py file (see below)
+
+### clone and build whitebox-tools
+project is setup to use whitebox-tools v2.2.0 as a submodule
+this can be achieved a number of ways, but the cleanest (also hardest) is to:
+- clone whitebox-tools into the repo as a submodule and point to the v2.2.0 release tag.
+`git submodule add -b v2.2.0 https://github.com/cefect/whitebox-tools.git`
+- compile the tools. call the below within the newly cloned submodule folder. this may take a while and requires you to have rust installed (see whitebox-tools documentation for more info)
+`cargo build --release`
+- update your python path to the below
+
+
+
+
+### PYTHONPATH
+replace PROJECT_DIR_NAME with the path to your repo. The last directory is created by building whitebox-tools.
+```
+PROJECT_DIR_NAME
+PROJECT_DIR_NAME\whitebox-tools
+PROJECT_DIR_NAME\whitebox-tools\target\release 
+```
+
+ 
+
+whitebox tools (cefect's fork)
+`git submodule add https://github.com/cefect/whitebox-tools.git`
+
+    v2.2.0
+        git switch v2.2.0
+        
+    need to build this using rust (see below)
 
 
 ### definitions.py
