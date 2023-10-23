@@ -1,15 +1,15 @@
-name: fdsc
+name: fdsc2
 channels:
   - conda-forge
 dependencies:
-  - python=3.10.*
-  - numpy=1.23.*
-  - pandas=1.5.*
-  - scipy=1.9.*
-  - pytest=7.1.*
+  - python=3.*
+  - numpy=1.26.*
+  - pandas=2.1.*
+  #- scipy=1.9.*
+  - pytest=7.4.*
   - rasterio=1.3.*
-  - matplotlib=3.6.*
-  - geopandas=0.12.*
+  - matplotlib
+  - geopandas=0.14.*
   - openpyxl
   #- numba=0.56.*
   #- cudatoolkit
@@ -20,17 +20,6 @@ dependencies:
   #- numbagg
   #- rioxarray=0.13.*
   - xlsxwriter=3.0.*
-  - georasters=0.5.*
+  - georasters=0.5.* #alternate backend for pixels_to_points
  
-  - pip
-  - pip:
-    - earthpy==0.9.*
-    - palettable==3.3.*
-    - matplotlib-scalebar==0.8.*
-
-variables:
-  #tell geopandas to use pygeos (instead of shapely) 
-  USE_PYGEOS: 1
-  #remove any GDAL data
-  PROJ_LIB: 
-  GDAL_DATA:
+ 
