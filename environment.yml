@@ -20,6 +20,6 @@ dependencies:
   #- numbagg
   #- rioxarray=0.13.*
   - xlsxwriter=3.0.*
-  - georasters=0.5.* #alternate backend for pixels_to_points
+  - georasters=0.5.* #alternate backend for schu14's pixels_to_points
  
  
