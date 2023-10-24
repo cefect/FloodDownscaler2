@@ -210,7 +210,7 @@ class CostGrow(WetPartials):
             assert len(vals_ar)>1, f'wbt.clump failed to identify enough clusters\n    {clump_fp}'
             
             max_clump_id = int(pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
-                        ).reset_index().dropna('index').iloc[0, 0])
+                        ).reset_index().dropna(subset='index').iloc[0, 0])
             
             #build a mask of this
             bx = ar==max_clump_id

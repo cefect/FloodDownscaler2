@@ -2,6 +2,8 @@
 Created on Dec. 4, 2022
 
 @author: cefect
+
+test downscaling methods
 '''
 
 import pytest, copy, os, random, re
@@ -54,7 +56,7 @@ def wrkr(init_kwargs, crs= crs_default):
 #===============================================================================
 # tests-------
 #===============================================================================
-@pytest.mark.dev
+
 def test_init(wrkr):
      
     pass
@@ -81,7 +83,7 @@ def test_p1(dem_fp, wse_fp, wrkr):
 
  
 
-
+ 
 @pytest.mark.parametrize('wse_fp', [
     (toy_d['wse13']),
     (proj_lib['fred01']['wse1_rlay3_fp']),

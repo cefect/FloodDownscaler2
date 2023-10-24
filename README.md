@@ -2,6 +2,8 @@
 
 Tools for downscaling/disaggregating flood hazard grids
 
+![alt text](./icon/logo_flood_rescale_20230205_600dpi.png)
+
 ## TODO:
 integrate coms
 split case study from downscaling tool
