@@ -16,6 +16,7 @@ def downscale(
     write_meta=True,
     
     out_dir=None,
+    logger=None,
     
     **kwargs):
         """dowscale a coarse WSE grid
@@ -42,9 +43,9 @@ def downscale(
             from definitions import wrk_dir
             out_dir= wrk_dir
             
-        with Dsc_Session(run_name='fdsc2', relative=True, out_dir=out_dir) as ses:
+        with Dsc_Session(run_name='fdsc2', relative=True, out_dir=out_dir, logger=logger) as ses:
  
-            ses.run_dsc(dem_fp, wse_fp, method=method, write_meta=write_meta,
+            return ses.run_dsc(dem_fp, wse_fp, method=method, write_meta=write_meta,
                         rkwargs=kwargs,
                         )
             
