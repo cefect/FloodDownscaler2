@@ -7,7 +7,7 @@ georasters
 '''
 import georasters as gr
 import geopandas as gpd
-from hp.gdal import getCrs
+#from hp.gdal import getCrs
 from hp.gpd import set_mask, view
 
 

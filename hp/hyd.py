@@ -241,467 +241,469 @@ class HydTypes(ErrGridTypes):
         """not needed by lowest object
         super().__exit__(*args, **kwargs)"""
         
- 
+
    
 #===============================================================================
 # RASTERS CONVSERIONS -------
 #===============================================================================
-def get_wsh_rlay(dem_fp, wse_fp, out_dir = None, ofp=None):
-    """add dem and wse to get a depth grid (dry filtered)"""
-    
-    assert_spatial_equal(dem_fp, wse_fp)
-    HydTypes('WSE').assert_fp(wse_fp)
-    HydTypes('DEM').assert_fp(dem_fp)
- 
-    
-    if ofp is None:
-        if out_dir is None:
-            out_dir = tempfile.gettempdir()
-        if not os.path.exists(out_dir):os.makedirs(out_dir)
-        
-        fname = os.path.splitext( os.path.basename(wse_fp))[0] + '_wsh.tif'
-        ofp = os.path.join(out_dir,fname)
-    
-    #===========================================================================
-    # load
-    #===========================================================================
-    dem_ar = load_array(dem_fp, masked=True)
-    
-    wse_ar = load_array(wse_fp, masked=True)
-    
-    #===========================================================================
-    # build raster
-    #===========================================================================
-    wd2M_ar = get_wsh_ar(dem_ar, wse_ar)
-    
-    #===========================================================================
-    # write
-    #===========================================================================
-    return write_array2(wd2M_ar, ofp, masked=False, **get_profile(wse_fp))
-
-def get_wsh_ar(dem_ar, wse_ar, dry_filter=True):
-    
-    assert_dem_ar(dem_ar)
-    assert_wse_ar(wse_ar)
-    
-    #simple subtract
-    wd_ar1 = wse_ar-dem_ar
-    
-    #filter dry (wse NULLS)  
-    wd_ar2 = np.where(wd_ar1.mask, 0.0, wd_ar1.data)
- 
- 
-    
-    #filter negatives
-    if dry_filter:
-        wd_ar3_data = np.where(wd_ar2<0.0, 0.0, wd_ar2.data)
-    else:
-        """this will faill type expectations"""
-        wd_ar3_data  = wd_ar2.data
-        
-    wd_ar3 = ma.array(
-        wd_ar3_data,
-        mask=np.full(wd_ar1.shape, False),
-        fill_value=-9999)
-    
-    assert_wsh_ar(wd_ar3)
-    
-    return wd_ar3
-        
-    
-
-
-def _get_ofp(fp, out_dir, name='wse', ext='tif'):
-    """shortcut to get filepaths"""
-    if out_dir is None:
-        out_dir = tempfile.gettempdir()
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
-    fname = os.path.splitext(os.path.basename(fp))[0] + f'_{name}.{ext}'
-    ofp = os.path.join(out_dir, fname)
-    return ofp
-
-def get_wse_rlay(dem_fp, wd_fp, out_dir = None, ofp=None):
-    """add dem and wse to get a depth grid"""
-    
-    assert_spatial_equal(dem_fp, wd_fp)
-    
-    if ofp is None:
-        ofp = _get_ofp(wd_fp, out_dir)
-    
-    #===========================================================================
-    # load
-    #===========================================================================
-    dem_ar = load_array(dem_fp, masked=True)
-    
-        
-    wd_ar = load_array(wd_fp, masked=True)
-    
-    wse_ar = get_wse_ar(dem_ar, wd_ar)
-    
-    #===========================================================================
-    # write
-    #===========================================================================
-    return write_array2(wse_ar, ofp, masked=False, **get_profile(wd_fp))
-    
-    
-    
-def get_wse_ar(dem_ar, wd_ar):
-    assert_dem_ar(dem_ar)
-    assert_wsh_ar(wd_ar)
-    #===========================================================================
-    # add
-    #===========================================================================
-    wse_ar1 = wd_ar+dem_ar
-    
-    wse_ar2 = ma.array(
-                wse_ar1.data, 
-                 mask=wd_ar<=0.0, 
-                 fill_value=dem_ar.fill_value)
-    
-    assert_wse_ar(wse_ar2)
-    
-    return wse_ar2
-    
-def get_inun_ar(ar_raw, dkey):
-    """convert flood like array to inundation (wet=True)
-    
-    Params
-    -----
-    ar_raw:
-        mask array
-    dkey:
-        type of mask array
-    """
-    if dkey in ['INUN_RLAY']:
-        ar = ar_raw
-    elif dkey == 'WSE':
-        ar = np.invert(ar_raw.mask)
-    elif dkey=='WSH':
-        """not allowing a mask
-        TODO: fix this so masks are allowed"""
-        #ar = ma.array(ar_raw.data>0,mask=ar_raw.mask, fill_value=ar_raw.fill_value)
-        ar=ar_raw.data>0
-    else:
-        raise NotImplementedError(dkey)
-        ar = ar.mask
-        
-    assert_inun_ar(ar, msg=dkey)
-    
-    return ar
-
-
-
 #===============================================================================
-# RASTER-POLY conversions -----------
-#===============================================================================
-
-def rlay_to_poly(rlay_fp, dkey,                    
-                    window=None,
-                    ):
-    """build an inundation polygon from the rlay
-    
-    
-    Pars
-    ---------
-    rlay_fp: str
-        flood like grid
-            WSH: 
-    
-    see also hp.rio.rlay_to_polygons
-    """
-    assert is_raster_file(rlay_fp)
-    HydTypes(dkey).assert_fp(rlay_fp)
- 
-    
-    #===========================================================================
-    # collect polygons
-    #===========================================================================
-    
-    with rio.open(rlay_fp, mode='r') as dataset:
-        #load the array by type
-        ar_raw = _get_hyd_ar(dataset, dkey, window=window)
-        
-        #convert to mask (wet=True)
-        ar_bool = get_inun_ar(ar_raw, dkey)
- 
-        #convert to binary for rio (1=wet)
-        ar_binary = np.where(ar_bool, 1, 0)
- 
-        #mask = image != src.nodata
-        geo_d=dict()
-        for geom, val in rasterio.features.shapes(ar_binary, mask=~ar_bool, 
-                                                  transform=dataset.transform,
-                                                  connectivity=8):
-            
-            geo_d[val] = sgeo.shape(geom)
-    
-    assert len(geo_d)==1
-    assert val==0
-    
-    return geo_d[val]
-
-def polyVlay_to_ar(poly_fp,
-                       rlay_ref=None,
-                       out_shape=None,
-                       transform=None,
-                   crs=None,
-
-                            **kwargs):
-    """convert an inundation polygon to a boolean inundation raster
-    1=wet
-    
-    NOTE: will fail if the raster is read locked (allows crs writing
-    """
-    HydTypes('INUN_POLY').assert_fp(poly_fp)
- 
-    
-    #===========================================================================
-    # load poolygon
-    #===========================================================================
-    gdf = gpd.read_file(poly_fp)
-
-    if not crs is None:
-        gdf = gdf.to_crs(crs)
-    
-    #===========================================================================
-    # get ref values
-    #===========================================================================
-    if out_shape is None or transform is None:
-        assert os.path.exists(rlay_ref)
-        with rasterio.open(rlay_ref, 'r+',**kwargs) as src:
-            if not crs is None:
-                src.crs=crs
-            assert src.crs.to_epsg()==gdf.crs.to_epsg(), f'crs mismatch'
-            """
-            type(gdf.crs)
-            """
-            out_shape = src.shape
-            transform=src.transform
-
-
-    
-
-    #===========================================================================
-    # # Generate a mask from the geojson geometry
-    #===========================================================================
-    mask_ar = rasterio.features.geometry_mask(gdf.geometry, 
-                                   out_shape=out_shape, transform=transform,
-                                   invert=True)
-    
-    assert_inun_ar(mask_ar)
-    
-    return mask_ar
-
-#===============================================================================
-# WRITERS-----------
-#===============================================================================
-def write_wsh_boolean(fp,
-                 ofp=None, out_dir=None,
-                 load_kwargs=dict(),
-                 ):
-    """write a boolean (0,1) raster of the inundation represented by the input WSH"""
-    if ofp is None:
-        ofp = _get_ofp(fp, out_dir, name='inun')
-        
-    #load the raw
-    mar_raw = load_array(fp, **load_kwargs)
-    assert_wsh_ar(mar_raw)
- 
-    #write mask True=dry, False=wet
-    return write_array_mask(mar_raw.data==0, ofp=ofp, maskType='binary',**get_profile(fp))
-
-def write_inun_rlay(fp, dkey,
-                    ofp=None, out_dir=None,
-                    **kwargs):
-    """write a boolean inundation ratser from a WSE or WSH layer (wet=True)
-    
-    hp.riom.load_mask_array()
-        binary
-            mask_ar = np.where(mask_ar_raw == 1, False, True). 0=True=wet
-                
-            
-        
-    """
-    
-    HydTypes(dkey).assert_fp(fp)
- 
-    
-    if ofp is None:
-        ofp = _get_ofp(fp, out_dir, name='INUN')
-    
-    if dkey=='WSE':
-        write_extract_mask(fp, ofp=ofp, maskType='binary', invert=True, **kwargs)
-    else:
-        raise NotImplementedError(dkey)
-    
-    #===========================================================================
-    # wrap
-    #===========================================================================
-    HydTypes('INUN_RLAY').assert_fp(ofp)
- 
-    
-    return ofp
-
-
-def write_wsh_clean(fp,
-                    ofp=None, out_dir=None,
-                    ):
-    """filter a depths raster"""
-    
-    if ofp is None:
-        ofp = _get_ofp(fp, out_dir, name='clean')
-    
-    mar_raw = load_array(fp, masked=True)
-    
-    ar_raw = mar_raw.data
-    
-    
-    mar1 = ma.array(
-                np.where(ar_raw>=0, ar_raw, 0.0), #filter
-                 mask=mar_raw.mask, 
-                 fill_value=mar_raw.fill_value)
-    
-    assert_wsh_ar(mar1)
-    
-    return write_array2(mar1, ofp, **get_profile(fp))
-    
-
-
-
-def write_rlay_to_poly(rlay_fp, 
-                            dkey='WSE',
-                            crs=None,
-                            ofp=None, out_dir=None,
-                            **kwargs):
-    """
-    
-    Parame4ters
-    --------
-    dkey: str
-    """
-    #===========================================================================
-    # defaults
-    #===========================================================================
-    if ofp is None:
-        ofp = _get_ofp(rlay_fp, out_dir, name='inun', ext='geojson')
-    
-    if crs is None:
-        crs = get_ds_attr(rlay_fp, 'crs')
-        
-    assert isinstance(crs, rio.crs.CRS)
-    
-    #===========================================================================
-    # build the polygon
-    #===========================================================================
-    poly = rlay_to_poly(rlay_fp, dkey, **kwargs)
-    
-    assert isinstance(poly, sgeo.polygon.Polygon)
-    
-    #===========================================================================
-    # #convert and write
-    #===========================================================================
-    gdf = gpd.GeoDataFrame(geometry=[poly], crs=crs)
-    gdf.to_file(ofp)
-        
-    return ofp
-
-
-
-    
-def write_poly_to_rlay(poly_fp,
-                       rlay_ref=None,
-                       out_shape=None,
-                       transform=None,
-                       ofp=None, out_dir=None,
-                       invert=True, #normallly we do wet=0
-                       **kwargs):
-    """write polygon to raster"""
-    
-    #===========================================================================
-    # defaults
-    #===========================================================================
-    if ofp is None:
-        ofp = _get_ofp(poly_fp, out_dir, name='inun', ext=os.path.splitext(rlay_ref)[1].replace('.', ''))
-    
-    #===========================================================================
-    # get the mask
-    #===========================================================================
-    bool_ar = polyVlay_to_ar(poly_fp, 
-                         rlay_ref=rlay_ref, out_shape=out_shape, transform=transform,
-                             **kwargs)
-    
- 
-    if invert:
-        bool_ar = np.invert(bool_ar)
-    
-    #===========================================================================
-    # # Write the mask to the output raster
-    #===========================================================================
-    return write_array2(bool_ar, ofp, **get_profile(rlay_ref)) #converts boolean to int (True=1)
-
- 
-    
-    
-    
-                       
-        
-#===============================================================================
-# HIDDEN HELPERS---------
-#===============================================================================
-    
-#===============================================================================
-# appliers
-#===============================================================================
-def _rlay_apply_hyd(rlay_fp, dkey, func, **kwargs):
-    """special applier that recognizes our mask arrays"""
-    warnings.warn("2023-04-02. use HydTypes.apply_fp() instead", DeprecationWarning)
-    
-    if dkey in ['INUN_RLAY']:
-        return rlay_mar_apply(rlay_fp, func, **kwargs)
-    else:
-        return rlay_ar_apply(rlay_fp, func, **kwargs)
-        
-    
-
-        
-
-
+# def get_wsh_rlay(dem_fp, wse_fp, out_dir = None, ofp=None):
+#     """add dem and wse to get a depth grid (dry filtered)"""
+#     
+#     assert_spatial_equal(dem_fp, wse_fp)
+#     HydTypes('WSE').assert_fp(wse_fp)
+#     HydTypes('DEM').assert_fp(dem_fp)
+#  
+#     
+#     if ofp is None:
+#         if out_dir is None:
+#             out_dir = tempfile.gettempdir()
+#         if not os.path.exists(out_dir):os.makedirs(out_dir)
+#         
+#         fname = os.path.splitext( os.path.basename(wse_fp))[0] + '_wsh.tif'
+#         ofp = os.path.join(out_dir,fname)
+#     
+#     #===========================================================================
+#     # load
+#     #===========================================================================
+#     dem_ar = load_array(dem_fp, masked=True)
+#     
+#     wse_ar = load_array(wse_fp, masked=True)
+#     
+#     #===========================================================================
+#     # build raster
+#     #===========================================================================
+#     wd2M_ar = get_wsh_ar(dem_ar, wse_ar)
+#     
+#     #===========================================================================
+#     # write
+#     #===========================================================================
+#     return write_array2(wd2M_ar, ofp, masked=False, **get_profile(wse_fp))
+# 
+# def get_wsh_ar(dem_ar, wse_ar, dry_filter=True):
+#     
+#     assert_dem_ar(dem_ar)
+#     assert_wse_ar(wse_ar)
+#     
+#     #simple subtract
+#     wd_ar1 = wse_ar-dem_ar
+#     
+#     #filter dry (wse NULLS)  
+#     wd_ar2 = np.where(wd_ar1.mask, 0.0, wd_ar1.data)
+#  
+#  
+#     
+#     #filter negatives
+#     if dry_filter:
+#         wd_ar3_data = np.where(wd_ar2<0.0, 0.0, wd_ar2.data)
+#     else:
+#         """this will faill type expectations"""
+#         wd_ar3_data  = wd_ar2.data
+#         
+#     wd_ar3 = ma.array(
+#         wd_ar3_data,
+#         mask=np.full(wd_ar1.shape, False),
+#         fill_value=-9999)
+#     
+#     assert_wsh_ar(wd_ar3)
+#     
+#     return wd_ar3
+#         
+#     
+# 
+# 
+# def _get_ofp(fp, out_dir, name='wse', ext='tif'):
+#     """shortcut to get filepaths"""
+#     if out_dir is None:
+#         out_dir = tempfile.gettempdir()
+#     if not os.path.exists(out_dir):
+#         os.makedirs(out_dir)
+#     fname = os.path.splitext(os.path.basename(fp))[0] + f'_{name}.{ext}'
+#     ofp = os.path.join(out_dir, fname)
+#     return ofp
+# 
+# def get_wse_rlay(dem_fp, wd_fp, out_dir = None, ofp=None):
+#     """add dem and wse to get a depth grid"""
+#     
+#     assert_spatial_equal(dem_fp, wd_fp)
+#     
+#     if ofp is None:
+#         ofp = _get_ofp(wd_fp, out_dir)
+#     
+#     #===========================================================================
+#     # load
+#     #===========================================================================
+#     dem_ar = load_array(dem_fp, masked=True)
+#     
+#         
+#     wd_ar = load_array(wd_fp, masked=True)
+#     
+#     wse_ar = get_wse_ar(dem_ar, wd_ar)
+#     
+#     #===========================================================================
+#     # write
+#     #===========================================================================
+#     return write_array2(wse_ar, ofp, masked=False, **get_profile(wd_fp))
+#     
+#     
+#     
+# def get_wse_ar(dem_ar, wd_ar):
+#     assert_dem_ar(dem_ar)
+#     assert_wsh_ar(wd_ar)
+#     #===========================================================================
+#     # add
+#     #===========================================================================
+#     wse_ar1 = wd_ar+dem_ar
+#     
+#     wse_ar2 = ma.array(
+#                 wse_ar1.data, 
+#                  mask=wd_ar<=0.0, 
+#                  fill_value=dem_ar.fill_value)
+#     
+#     assert_wse_ar(wse_ar2)
+#     
+#     return wse_ar2
+#     
+# def get_inun_ar(ar_raw, dkey):
+#     """convert flood like array to inundation (wet=True)
+#     
+#     Params
+#     -----
+#     ar_raw:
+#         mask array
+#     dkey:
+#         type of mask array
+#     """
+#     if dkey in ['INUN_RLAY']:
+#         ar = ar_raw
+#     elif dkey == 'WSE':
+#         ar = np.invert(ar_raw.mask)
+#     elif dkey=='WSH':
+#         """not allowing a mask
+#         TODO: fix this so masks are allowed"""
+#         #ar = ma.array(ar_raw.data>0,mask=ar_raw.mask, fill_value=ar_raw.fill_value)
+#         ar=ar_raw.data>0
+#     else:
+#         raise NotImplementedError(dkey)
+#         ar = ar.mask
+#         
+#     assert_inun_ar(ar, msg=dkey)
+#     
+#     return ar
+# 
+# 
+# 
+# #===============================================================================
+# # RASTER-POLY conversions -----------
+# #===============================================================================
+# 
+# def rlay_to_poly(rlay_fp, dkey,                    
+#                     window=None,
+#                     ):
+#     """build an inundation polygon from the rlay
+#     
+#     
+#     Pars
+#     ---------
+#     rlay_fp: str
+#         flood like grid
+#             WSH: 
+#     
+#     see also hp.rio.rlay_to_polygons
+#     """
+#     assert is_raster_file(rlay_fp)
+#     HydTypes(dkey).assert_fp(rlay_fp)
+#  
+#     
+#     #===========================================================================
+#     # collect polygons
+#     #===========================================================================
+#     
+#     with rio.open(rlay_fp, mode='r') as dataset:
+#         #load the array by type
+#         ar_raw = _get_hyd_ar(dataset, dkey, window=window)
+#         
+#         #convert to mask (wet=True)
+#         ar_bool = get_inun_ar(ar_raw, dkey)
+#  
+#         #convert to binary for rio (1=wet)
+#         ar_binary = np.where(ar_bool, 1, 0)
+#  
+#         #mask = image != src.nodata
+#         geo_d=dict()
+#         for geom, val in rasterio.features.shapes(ar_binary, mask=~ar_bool, 
+#                                                   transform=dataset.transform,
+#                                                   connectivity=8):
+#             
+#             geo_d[val] = sgeo.shape(geom)
+#     
+#     assert len(geo_d)==1
+#     assert val==0
+#     
+#     return geo_d[val]
+# 
+# def polyVlay_to_ar(poly_fp,
+#                        rlay_ref=None,
+#                        out_shape=None,
+#                        transform=None,
+#                    crs=None,
+# 
+#                             **kwargs):
+#     """convert an inundation polygon to a boolean inundation raster
+#     1=wet
+#     
+#     NOTE: will fail if the raster is read locked (allows crs writing
+#     """
+#     HydTypes('INUN_POLY').assert_fp(poly_fp)
+#  
+#     
+#     #===========================================================================
+#     # load poolygon
+#     #===========================================================================
+#     gdf = gpd.read_file(poly_fp)
+# 
+#     if not crs is None:
+#         gdf = gdf.to_crs(crs)
+#     
+#     #===========================================================================
+#     # get ref values
+#     #===========================================================================
+#     if out_shape is None or transform is None:
+#         assert os.path.exists(rlay_ref)
+#         with rasterio.open(rlay_ref, 'r+',**kwargs) as src:
+#             if not crs is None:
+#                 src.crs=crs
+#             assert src.crs.to_epsg()==gdf.crs.to_epsg(), f'crs mismatch'
+#             """
+#             type(gdf.crs)
+#             """
+#             out_shape = src.shape
+#             transform=src.transform
+# 
+# 
+#     
+# 
+#     #===========================================================================
+#     # # Generate a mask from the geojson geometry
+#     #===========================================================================
+#     mask_ar = rasterio.features.geometry_mask(gdf.geometry, 
+#                                    out_shape=out_shape, transform=transform,
+#                                    invert=True)
+#     
+#     assert_inun_ar(mask_ar)
+#     
+#     return mask_ar
+# 
+# #===============================================================================
+# # WRITERS-----------
+# #===============================================================================
+# def write_wsh_boolean(fp,
+#                  ofp=None, out_dir=None,
+#                  load_kwargs=dict(),
+#                  ):
+#     """write a boolean (0,1) raster of the inundation represented by the input WSH"""
+#     if ofp is None:
+#         ofp = _get_ofp(fp, out_dir, name='inun')
+#         
+#     #load the raw
+#     mar_raw = load_array(fp, **load_kwargs)
+#     assert_wsh_ar(mar_raw)
+#  
+#     #write mask True=dry, False=wet
+#     return write_array_mask(mar_raw.data==0, ofp=ofp, maskType='binary',**get_profile(fp))
+# 
+# def write_inun_rlay(fp, dkey,
+#                     ofp=None, out_dir=None,
+#                     **kwargs):
+#     """write a boolean inundation ratser from a WSE or WSH layer (wet=True)
+#     
+#     hp.riom.load_mask_array()
+#         binary
+#             mask_ar = np.where(mask_ar_raw == 1, False, True). 0=True=wet
+#                 
+#             
+#         
+#     """
+#     
+#     HydTypes(dkey).assert_fp(fp)
+#  
+#     
+#     if ofp is None:
+#         ofp = _get_ofp(fp, out_dir, name='INUN')
+#     
+#     if dkey=='WSE':
+#         write_extract_mask(fp, ofp=ofp, maskType='binary', invert=True, **kwargs)
+#     else:
+#         raise NotImplementedError(dkey)
+#     
+#     #===========================================================================
+#     # wrap
+#     #===========================================================================
+#     HydTypes('INUN_RLAY').assert_fp(ofp)
+#  
+#     
+#     return ofp
+# 
+# 
+# def write_wsh_clean(fp,
+#                     ofp=None, out_dir=None,
+#                     ):
+#     """filter a depths raster"""
+#     
+#     if ofp is None:
+#         ofp = _get_ofp(fp, out_dir, name='clean')
+#     
+#     mar_raw = load_array(fp, masked=True)
+#     
+#     ar_raw = mar_raw.data
+#     
+#     
+#     mar1 = ma.array(
+#                 np.where(ar_raw>=0, ar_raw, 0.0), #filter
+#                  mask=mar_raw.mask, 
+#                  fill_value=mar_raw.fill_value)
+#     
+#     assert_wsh_ar(mar1)
+#     
+#     return write_array2(mar1, ofp, **get_profile(fp))
+#     
+# 
+# 
+# 
+# def write_rlay_to_poly(rlay_fp, 
+#                             dkey='WSE',
+#                             crs=None,
+#                             ofp=None, out_dir=None,
+#                             **kwargs):
+#     """
+#     
+#     Parame4ters
+#     --------
+#     dkey: str
+#     """
+#     #===========================================================================
+#     # defaults
+#     #===========================================================================
+#     if ofp is None:
+#         ofp = _get_ofp(rlay_fp, out_dir, name='inun', ext='geojson')
+#     
+#     if crs is None:
+#         crs = get_ds_attr(rlay_fp, 'crs')
+#         
+#     assert isinstance(crs, rio.crs.CRS)
+#     
+#     #===========================================================================
+#     # build the polygon
+#     #===========================================================================
+#     poly = rlay_to_poly(rlay_fp, dkey, **kwargs)
+#     
+#     assert isinstance(poly, sgeo.polygon.Polygon)
+#     
+#     #===========================================================================
+#     # #convert and write
+#     #===========================================================================
+#     gdf = gpd.GeoDataFrame(geometry=[poly], crs=crs)
+#     gdf.to_file(ofp)
+#         
+#     return ofp
+# 
+# 
+# 
+#     
+# def write_poly_to_rlay(poly_fp,
+#                        rlay_ref=None,
+#                        out_shape=None,
+#                        transform=None,
+#                        ofp=None, out_dir=None,
+#                        invert=True, #normallly we do wet=0
+#                        **kwargs):
+#     """write polygon to raster"""
+#     
+#     #===========================================================================
+#     # defaults
+#     #===========================================================================
+#     if ofp is None:
+#         ofp = _get_ofp(poly_fp, out_dir, name='inun', ext=os.path.splitext(rlay_ref)[1].replace('.', ''))
+#     
+#     #===========================================================================
+#     # get the mask
+#     #===========================================================================
+#     bool_ar = polyVlay_to_ar(poly_fp, 
+#                          rlay_ref=rlay_ref, out_shape=out_shape, transform=transform,
+#                              **kwargs)
+#     
+#  
+#     if invert:
+#         bool_ar = np.invert(bool_ar)
+#     
+#     #===========================================================================
+#     # # Write the mask to the output raster
+#     #===========================================================================
+#     return write_array2(bool_ar, ofp, **get_profile(rlay_ref)) #converts boolean to int (True=1)
+# 
+#  
+#     
+#     
+#     
+#                        
+#         
+# #===============================================================================
+# # HIDDEN HELPERS---------
+# #===============================================================================
+#     
+# #===============================================================================
+# # appliers
+# #===============================================================================
+# def _rlay_apply_hyd(rlay_fp, dkey, func, **kwargs):
+#     """special applier that recognizes our mask arrays"""
+#     warnings.warn("2023-04-02. use HydTypes.apply_fp() instead", DeprecationWarning)
+#     
+#     if dkey in ['INUN_RLAY']:
+#         return rlay_mar_apply(rlay_fp, func, **kwargs)
+#     else:
+#         return rlay_ar_apply(rlay_fp, func, **kwargs)
+#         
+#     
+# 
+#         
+# 
+# 
 def _gpd_apply(fp, func, **kwargs):
     """matching the syntax of rlay_ar_apply"""
     gdf = gpd.read_file(fp)
     return func(gdf, **kwargs)
-    
-#===============================================================================
-# loaders
-#===============================================================================
+#     
+# #===============================================================================
+# # loaders
+# #===============================================================================
 def _load_ar(rlay_obj, **kwargs):
     return load_array(rlay_obj, masked=True, **kwargs)
-
+# 
 def _load_mar(rlay_obj, **kwargs):
     return load_mask_array(rlay_obj, maskType='binary', **kwargs)
-
- 
-
-def _get_inun_gdf(fp):
-    warnings.warn("2023-04-02. use HydTypes.load_fp() instead", DeprecationWarning)
-    gdf = gpd.read_file(fp)
-    assert_inun_poly(gdf, msg=os.path.basename(fp))
-    return gdf
-
-
-def _get_hyd_ar(rlay_obj, dkey, **kwargs):
-    """special array loader"""
-    warnings.warn("2023-04-02. use HydTypes.load_fp() instead", DeprecationWarning)
-    
-    #allowing datasets here
-    #assert_type_fp(rlay_obj, dkey)
-    
-    if dkey in ['INUN_RLAY']:
-        return load_mask_array(rlay_obj, maskType='binary', **kwargs)
- 
-    else:
-        return load_array(rlay_obj, masked=True, **kwargs)
+# 
+#  
+# 
+# def _get_inun_gdf(fp):
+#     warnings.warn("2023-04-02. use HydTypes.load_fp() instead", DeprecationWarning)
+#     gdf = gpd.read_file(fp)
+#     assert_inun_poly(gdf, msg=os.path.basename(fp))
+#     return gdf
+# 
+# 
+# def _get_hyd_ar(rlay_obj, dkey, **kwargs):
+#     """special array loader"""
+#     warnings.warn("2023-04-02. use HydTypes.load_fp() instead", DeprecationWarning)
+#     
+#     #allowing datasets here
+#     #assert_type_fp(rlay_obj, dkey)
+#     
+#     if dkey in ['INUN_RLAY']:
+#         return load_mask_array(rlay_obj, maskType='binary', **kwargs)
+#  
+#     else:
+#         return load_array(rlay_obj, masked=True, **kwargs)
+#===============================================================================
               
               
 #===============================================================================
@@ -722,6 +724,7 @@ def assert_inun_ar(ar, msg=''):
     
       
 
+
 def assert_dem_ar(ar, msg=''):
     """check the array satisfies expectations for a DEM array"""
     if not __debug__: # true if Python was not started with an -O option
@@ -732,8 +735,6 @@ def assert_dem_ar(ar, msg=''):
     
     if not np.all(np.invert(ar.mask)):
         raise AssertionError(msg+': some masked values')
-    
-    
     
 def assert_wse_ar(ar, msg=''):
     """check the array satisfies expectations for a WSE array"""

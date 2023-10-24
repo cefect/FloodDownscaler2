@@ -31,7 +31,7 @@ logging.getLogger("fiona.ogrext").setLevel(logging.WARNING)
 logging.getLogger("fiona").setLevel(logging.WARNING)
 
 from hp.pd import view
-from hp.rio import rlay_to_polygons, get_meta, write_array2, get_write_kwargs
+from hp.rio import get_meta, write_array2, get_write_kwargs
 
 def now():
     return datetime.datetime.now()
@@ -141,14 +141,16 @@ def set_mask(gser_raw, drop_mask):
         gser = gser_raw
     return gser
 
-def rlay_to_gdf(rlay_fp, convert_to_binary=True):
-    """make polygons out of a raster. i.e., polygonize"""
-    
-    #get geometry collection
-    geo_d = rlay_to_polygons(rlay_fp, convert_to_binary=convert_to_binary)
-    
-    #convert to geopandas
-    return gpd.GeoDataFrame({'val':list(geo_d.keys())}, geometry=list(geo_d.values()))
+#===============================================================================
+# def rlay_to_gdf(rlay_fp, convert_to_binary=True):
+#     """make polygons out of a raster. i.e., polygonize"""
+#     
+#     #get geometry collection
+#     geo_d = rlay_to_polygons(rlay_fp, convert_to_binary=convert_to_binary)
+#     
+#     #convert to geopandas
+#     return gpd.GeoDataFrame({'val':list(geo_d.keys())}, geometry=list(geo_d.values()))
+#===============================================================================
 
 
 def write_rasterize(poly_fp,

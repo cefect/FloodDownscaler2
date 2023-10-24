@@ -332,28 +332,30 @@ class RioSession(RioWrkr, SpatialBBOXWrkr):
     
  
     
-    def _get_defaults(self, crs=None, bbox=None, nodata=None, compress=None,
-                      as_dict=False):
-        """return session defaults for this worker
-        
-        EXAMPLE
-        ----------
-        crs, bbox, compress, nodata =RioSession._get_defaults(self)
-        """
-        self.assert_atts()
-        
-        if crs is None: crs=self.crs
-        if bbox is  None: bbox=self.bbox
-        if compress is None: compress=self.compress
-        if nodata is None: nodata=self.nodata
-        
-
-        
-        
-        if not as_dict:
-            return crs, bbox, compress, nodata
-        else:
-            return dict(crs=crs, bbox=bbox, compress=compress, nodata=nodata)
+#===============================================================================
+#     def _get_defaults(self, crs=None, bbox=None, nodata=None, compress=None,
+#                       as_dict=False):
+#         """return session defaults for this worker
+#         
+#         EXAMPLE
+#         ----------
+#         crs, bbox, compress, nodata =RioSession._get_defaults(self)
+#         """
+#         self.assert_atts()
+#         
+#         if crs is None: crs=self.crs
+#         if bbox is  None: bbox=self.bbox
+#         if compress is None: compress=self.compress
+#         if nodata is None: nodata=self.nodata
+#         
+# 
+#         
+#         
+#         if not as_dict:
+#             return crs, bbox, compress, nodata
+#         else:
+#             return dict(crs=crs, bbox=bbox, compress=compress, nodata=nodata)
+#===============================================================================
         
     def assert_atts(self):
         RioWrkr.assert_atts(self)
@@ -746,55 +748,7 @@ def rlay_ar_apply(rlay, func, masked=True, **kwargs):
     
     return rlay_apply(rlay, ds_func, **kwargs)
         
-
-#===============================================================================
-# def resample(rlay, ofp, scale=1, resampling=Resampling.nearest):
-#     """skinny resampling"""
-#     
-#     
-#     
-#     def func(dataset):
-#         out_shape=(dataset.count,int(dataset.height * scale),int(dataset.width * scale))
-#         
-#         data_rsmp = dataset.read(1,
-#             out_shape=out_shape,
-#             resampling=resampling
-#                                 )
-#         
-#         # scale image transform
-#         transform = dataset.transform * dataset.transform.scale(
-#             (dataset.width / data_rsmp.shape[-1]),
-#             (dataset.height / data_rsmp.shape[-2])
-#         )
-#         
-#  
-#         #===========================================================================
-#         # resample nulls
-#         #===========================================================================
-#         msk_rsmp = dataset.read_masks(1, 
-#                 out_shape=out_shape,
-#                 resampling=Resampling.nearest, #doesnt bleed
-#             ) 
-#         
-#         #===============================================================================
-#         # coerce transformed nulls
-#         #===============================================================================
-#         """needed as some resampling methods bleed out
-#         theres a few ways to handle this... 
-#             here we manipulate the data values directly.. which seems the cleanest"""
-#  
-#         assert data_rsmp.shape==msk_rsmp.shape
-#         data_rsmp_f1 = np.where(msk_rsmp==0,  dataset.nodata, data_rsmp).astype(dataset.dtypes[0])
-#         
-#         profile = {k:getattr(dataset, k) for k in ['crs', 'nodata']}
-#         
-#         return write_array(data_rsmp_f1, ofp,dtype=dataset.dtypes[0],transform=transform, **profile)
-#     
-#     return rlay_apply(rlay, func)
-#===============================================================================
-    
-    
-
+ 
 
 def get_window(ds, bbox,
                buffer_bbox=False,
@@ -876,123 +830,135 @@ def get_write_kwargs( obj,
     rlay_kwargs['dtype'] = stats_d['dtypes'][0]
     
     return rlay_kwargs
+#===============================================================================
+# 
+# def get_shape(obj):
+#     d = rlay_apply(obj, _get_meta, att_l=['height', 'width'])
+#     
+#     return (d['height'], d['width'])
+#===============================================================================
+#===============================================================================
+# 
+# def get_support_ratio(obj_top, obj_bot):
+#         """get scale difference"""
+#         shape1 = get_shape(obj_top)
+#         shape2 = get_shape(obj_bot)
+#         
+#         height_ratio = shape1[0]/shape2[0]
+#         width_ratio = shape1[1]/shape2[1]
+#         
+#         assert height_ratio==width_ratio, f'ratio mismatch. height={height_ratio}. width={width_ratio}'
+#         
+#         return width_ratio
+#===============================================================================
 
-def get_shape(obj):
-    d = rlay_apply(obj, _get_meta, att_l=['height', 'width'])
-    
-    return (d['height'], d['width'])
-
-def get_support_ratio(obj_top, obj_bot):
-        """get scale difference"""
-        shape1 = get_shape(obj_top)
-        shape2 = get_shape(obj_bot)
-        
-        height_ratio = shape1[0]/shape2[0]
-        width_ratio = shape1[1]/shape2[1]
-        
-        assert height_ratio==width_ratio, f'ratio mismatch. height={height_ratio}. width={width_ratio}'
-        
-        return width_ratio
-
-
-def rlay_calc1(rlay_fp, ofp, statement):
-    """evaluate a statement with numpy math on a single raster"""
-    
-    with rio.open(rlay_fp, mode='r') as ds:
-        ar = load_array(ds)
-        
-        result = statement(ar)
-        
-        assert isinstance(result, np.ndarray)
-        
-        profile = ds.profile
-        
-    #write
-    with rio.open(ofp, mode='w', **profile) as dest:
-        dest.write(
-            np.where(np.isnan(result), profile['nodata'],result),
-             1)
-    
-    return ofp
+#===============================================================================
+# 
+# def rlay_calc1(rlay_fp, ofp, statement):
+#     """evaluate a statement with numpy math on a single raster"""
+#     
+#     with rio.open(rlay_fp, mode='r') as ds:
+#         ar = load_array(ds)
+#         
+#         result = statement(ar)
+#         
+#         assert isinstance(result, np.ndarray)
+#         
+#         profile = ds.profile
+#         
+#     #write
+#     with rio.open(ofp, mode='w', **profile) as dest:
+#         dest.write(
+#             np.where(np.isnan(result), profile['nodata'],result),
+#              1)
+#     
+#     return ofp
+#===============================================================================
         
     
         
     
 
 
-
-def get_xy_coords(transform, shape):
-    """return an array of spatial values for x and y
-    
-    surprised there is no builtin
-    
-    this is needed  by xarray
-    
-    print(f'x, cols:{s[1]}    y, rows:{s[0]}')
-    """
-    transformer = rio.transform.AffineTransformer(transform) 
-    x_ar, _ = transformer.xy(np.full(shape[1], 0), np.arange(shape[1])) #rows, cols            
-    _, y_ar = transformer.xy(np.arange(shape[0]), np.full(shape[0], 0)) #rows, cols
-    
-    return x_ar, y_ar
+#===============================================================================
+# 
+# def get_xy_coords(transform, shape):
+#     """return an array of spatial values for x and y
+#     
+#     surprised there is no builtin
+#     
+#     this is needed  by xarray
+#     
+#     print(f'x, cols:{s[1]}    y, rows:{s[0]}')
+#     """
+#     transformer = rio.transform.AffineTransformer(transform) 
+#     x_ar, _ = transformer.xy(np.full(shape[1], 0), np.arange(shape[1])) #rows, cols            
+#     _, y_ar = transformer.xy(np.arange(shape[0]), np.full(shape[0], 0)) #rows, cols
+#     
+#     return x_ar, y_ar
+#===============================================================================
 
 def get_bbox(rlay_obj):
     bounds = get_ds_attr(rlay_obj, 'bounds')
     return sgeo.box(*bounds)
 
-def get_data_stats(fp, **kwargs):
-    
-    ar = load_array(fp, **kwargs)
-    
-    return {
-        'max':ar.max(),
-        'min':ar.min(),
-        'mean':ar.mean(), #not sure how mask is treated
-        'mask':ar.mask.sum(),
-        'size':ar.size,
-        }
-    
+#===============================================================================
+# def get_data_stats(fp, **kwargs):
+#     
+#     ar = load_array(fp, **kwargs)
+#     
+#     return {
+#         'max':ar.max(),
+#         'min':ar.min(),
+#         'mean':ar.mean(), #not sure how mask is treated
+#         'mask':ar.mask.sum(),
+#         'size':ar.size,
+#         }
+#     
+#===============================================================================
  
     
-def rlay_to_polygons(rlay_fp, convert_to_binary=True,
-                          ):
-    """
-    get shapely polygons for each clump in a raster
-    
-    see also hp.hyd.write_inun_poly
-    
-    Parameters
-    -----------
-    convert_to_binary: bool, True
-        True: polygon around mask values (e.g., inundation)
-        False: polygon around data values
-        
-    """
-    
-    #===========================================================================
-    # collect polygons
-    #===========================================================================
-    print(f'with convert_to_binary={convert_to_binary} on \n    {rlay_fp}')
-    with rio.open(rlay_fp, mode='r') as src:
-        mar = src.read(1, masked=True)
-        
-        if convert_to_binary:
-            source = np.where(mar.mask, int(mar.fill_value),1)
-        else:
-            source = mar
-        #mask = image != src.nodata
-        d=dict()
-        for geom, val in rasterio.features.shapes(source, mask=~mar.mask,
-                                                  transform=src.transform,
-                                                  connectivity=8):
-            
-            d[val] = sgeo.shape(geom)
-            
-        #print(f'finished w/ {len(d)} polygon')
-        
- 
-        
-    return d
+#===============================================================================
+# def rlay_to_polygons(rlay_fp, convert_to_binary=True,
+#                           ):
+#     """
+#     get shapely polygons for each clump in a raster
+#     
+#     see also hp.hyd.write_inun_poly
+#     
+#     Parameters
+#     -----------
+#     convert_to_binary: bool, True
+#         True: polygon around mask values (e.g., inundation)
+#         False: polygon around data values
+#         
+#     """
+#     
+#     #===========================================================================
+#     # collect polygons
+#     #===========================================================================
+#     print(f'with convert_to_binary={convert_to_binary} on \n    {rlay_fp}')
+#     with rio.open(rlay_fp, mode='r') as src:
+#         mar = src.read(1, masked=True)
+#         
+#         if convert_to_binary:
+#             source = np.where(mar.mask, int(mar.fill_value),1)
+#         else:
+#             source = mar
+#         #mask = image != src.nodata
+#         d=dict()
+#         for geom, val in rasterio.features.shapes(source, mask=~mar.mask,
+#                                                   transform=src.transform,
+#                                                   connectivity=8):
+#             
+#             d[val] = sgeo.shape(geom)
+#             
+#         #print(f'finished w/ {len(d)} polygon')
+#         
+#  
+#         
+#     return d
+#===============================================================================
     
 #===============================================================================
 # Building New Rasters--------
@@ -1375,42 +1341,46 @@ def write_mosaic(fp1, fp2, ofp=None):
 #===============================================================================
 # PLOTS----------
 #===============================================================================
-def plot_with_window(ax, fp, bbox=None, **kwargs):
-    """plot a clipped raster"""
-    with rio.open(fp, mode='r') as ds:
-        
-        #===================================================================
-        # #load and clip the array
-        #===================================================================
-        if bbox is None:
-            window = None
-            transform = ds.transform
-        else:
-            window = rio.windows.from_bounds(*bbox.bounds, transform=ds.transform)
-            #transform = rio.transform.from_bounds(*bbox.bounds, *window.shape)
-            transform = rio.windows.transform(window, ds.transform)
-            
-        ar = ds.read(1, window=window, masked=True)
-    
-    return show(ar, 
-                transform=transform, 
-                ax=ax, contour=False,interpolation='nearest', **kwargs)
+#===============================================================================
+# def plot_with_window(ax, fp, bbox=None, **kwargs):
+#     """plot a clipped raster"""
+#     with rio.open(fp, mode='r') as ds:
+#         
+#         #===================================================================
+#         # #load and clip the array
+#         #===================================================================
+#         if bbox is None:
+#             window = None
+#             transform = ds.transform
+#         else:
+#             window = rio.windows.from_bounds(*bbox.bounds, transform=ds.transform)
+#             #transform = rio.transform.from_bounds(*bbox.bounds, *window.shape)
+#             transform = rio.windows.transform(window, ds.transform)
+#             
+#         ar = ds.read(1, window=window, masked=True)
+#     
+#     return show(ar, 
+#                 transform=transform, 
+#                 ax=ax, contour=False,interpolation='nearest', **kwargs)
+#===============================================================================
  
 
 #===============================================================================
 # TESTS--------
 #===============================================================================
-def is_divisible(rlay, divisor):
-    """check if the rlays dimensions are evenly divislbe by the divisor"""
-    assert isinstance(divisor, int)
-    
-    shape = rlay_apply(rlay, lambda x:x.shape)
-        
-    for dim in shape:
-        if dim%divisor!=0:
-            return False
-
-    return True
+#===============================================================================
+# def is_divisible(rlay, divisor):
+#     """check if the rlays dimensions are evenly divislbe by the divisor"""
+#     assert isinstance(divisor, int)
+#     
+#     shape = rlay_apply(rlay, lambda x:x.shape)
+#         
+#     for dim in shape:
+#         if dim%divisor!=0:
+#             return False
+# 
+#     return True
+#===============================================================================
 
 def is_raster_file(filepath):
     """probably some more sophisticated way to do this... but I always use tifs"""
@@ -1477,18 +1447,20 @@ def assert_extent_equal(left, right,  msg='',):
                 le, re) +msg) 
 
 
-def is_spatial_equal(left, right):
-    f= lambda ds, att_l=['crs', 'height', 'width', 'bounds', 'res']:_get_meta(ds, att_l=att_l)
-    
-    ld = rlay_apply(left, f)
-    rd = rlay_apply(right, f)
- 
-    for k, lval in ld.items():
-        rval = rd[k]
-        if not lval == rval:
-            return False
-        
-    return True
+#===============================================================================
+# def is_spatial_equal(left, right):
+#     f= lambda ds, att_l=['crs', 'height', 'width', 'bounds', 'res']:_get_meta(ds, att_l=att_l)
+#     
+#     ld = rlay_apply(left, f)
+#     rd = rlay_apply(right, f)
+#  
+#     for k, lval in ld.items():
+#         rval = rd[k]
+#         if not lval == rval:
+#             return False
+#         
+#     return True
+#===============================================================================
             
 
 def assert_spatial_equal(left, right,  msg='',): 
@@ -1514,29 +1486,31 @@ def assert_spatial_equal(left, right,  msg='',):
         
      
 
-def assert_ds_attribute_match(rlay,
-                          crs=None, height=None, width=None, transform=None, nodata=None,bounds=None,
-                          msg=''):
-
-    #assertion setup
-    if not __debug__: # true if Python was not started with an -O option
-        return
-    __tracebackhide__ = True
-    
-    stats_d = rlay_apply(rlay, _get_meta)
-    
-    chk_d = {'crs':crs, 'height':height, 'width':width, 'transform':transform, 'nodata':nodata, 'bounds':bounds}
-    
-    cnt=0
-    for k, cval in chk_d.items():
-        if not cval is None:
-            if not cval==stats_d[k]:
-                raise AssertionError('stat \'%s\' does not meet passed expectation (%s vs. %s) \n '%(
-                    k, cval, stats_d[k])+msg)
-            cnt+=1
-    
-    if not cnt>0:
-        raise IOError('no check values passed')
+#===============================================================================
+# def assert_ds_attribute_match(rlay,
+#                           crs=None, height=None, width=None, transform=None, nodata=None,bounds=None,
+#                           msg=''):
+# 
+#     #assertion setup
+#     if not __debug__: # true if Python was not started with an -O option
+#         return
+#     __tracebackhide__ = True
+#     
+#     stats_d = rlay_apply(rlay, _get_meta)
+#     
+#     chk_d = {'crs':crs, 'height':height, 'width':width, 'transform':transform, 'nodata':nodata, 'bounds':bounds}
+#     
+#     cnt=0
+#     for k, cval in chk_d.items():
+#         if not cval is None:
+#             if not cval==stats_d[k]:
+#                 raise AssertionError('stat \'%s\' does not meet passed expectation (%s vs. %s) \n '%(
+#                     k, cval, stats_d[k])+msg)
+#             cnt+=1
+#     
+#     if not cnt>0:
+#         raise IOError('no check values passed')
+#===============================================================================
  
 
  

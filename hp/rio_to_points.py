@@ -96,67 +96,68 @@ def raster_to_points_windowed(rlay_fp, drop_mask=False, max_workers=os.cpu_count
 
 def process_coord(c):
     return Point(c)
-    
-def raster_to_points_simple(rlay_fp, drop_mask=True, max_workers=1):
-    """simply convert a raster to a set of points
-    
-    NOTE: this can be very slow for large rasters
-    
-    see also hp.rio_to_points for windowed paralleleization
-    
-    PERFORMANCE TESTS
-    ---------------
-    max_workers>1 slows things down tremendously.
-        GeoRaster package works much better. see hp.gr.pixels_to_points
-     
-    """
-    if max_workers is None:
-        max_workers=os.cpu_count()
-    
-    with rio.open(rlay_fp, mode='r') as ds:
-        #do some operation
- 
-        #coordinates
- 
-        cols, rows = np.meshgrid(np.arange(ds.width), np.arange(ds.height))
- 
-        xs, ys = rio.transform.xy(ds.transform, rows, cols)
-        
-        xloc_ar, yloc_ar = np.array(xs), np.array(ys)
-        
-        #data
- 
-        ar = ds.read(1, masked=True)
-        
-        #populate geoseries
- 
-        coord_l= list(zip(xloc_ar.flatten(), yloc_ar.flatten(), ar.data.flatten()))
-        
-        """bottleneck here"""
-        #=======================================================================
-        # plug each coordinate into a point object
-        #=======================================================================
-        print(f'preparing GeoSeries on {ar.shape} w/ max_workers={max_workers} %s'%now())
-        
-        if max_workers==1:
-            point_l=[Point(c) for c in coord_l]
-        else: #multiprocess 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                point_l = list(executor.map(process_coord, coord_l))
-                
-        #=======================================================================
-        # collect
-        #=======================================================================
-        print(f'collecting geoseries on {len(point_l)} %s'%now())
-        gser_raw = gpd.GeoSeries(point_l,crs=ds.crs)
-        
-        #handle mask
-        gser = set_mask(gser_raw, drop_mask)            
-        
-    gser.name = os.path.basename(rlay_fp)
-    return gser
-
-
+#===============================================================================
+#     
+# def raster_to_points_simple(rlay_fp, drop_mask=True, max_workers=1):
+#     """simply convert a raster to a set of points
+#     
+#     NOTE: this can be very slow for large rasters
+#     
+#     see also hp.rio_to_points for windowed paralleleization
+#     
+#     PERFORMANCE TESTS
+#     ---------------
+#     max_workers>1 slows things down tremendously.
+#         GeoRaster package works much better. see hp.gr.pixels_to_points
+#      
+#     """
+#     if max_workers is None:
+#         max_workers=os.cpu_count()
+#     
+#     with rio.open(rlay_fp, mode='r') as ds:
+#         #do some operation
+#  
+#         #coordinates
+#  
+#         cols, rows = np.meshgrid(np.arange(ds.width), np.arange(ds.height))
+#  
+#         xs, ys = rio.transform.xy(ds.transform, rows, cols)
+#         
+#         xloc_ar, yloc_ar = np.array(xs), np.array(ys)
+#         
+#         #data
+#  
+#         ar = ds.read(1, masked=True)
+#         
+#         #populate geoseries
+#  
+#         coord_l= list(zip(xloc_ar.flatten(), yloc_ar.flatten(), ar.data.flatten()))
+#         
+#         """bottleneck here"""
+#         #=======================================================================
+#         # plug each coordinate into a point object
+#         #=======================================================================
+#         print(f'preparing GeoSeries on {ar.shape} w/ max_workers={max_workers} %s'%now())
+#         
+#         if max_workers==1:
+#             point_l=[Point(c) for c in coord_l]
+#         else: #multiprocess 
+#             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+#                 point_l = list(executor.map(process_coord, coord_l))
+#                 
+#         #=======================================================================
+#         # collect
+#         #=======================================================================
+#         print(f'collecting geoseries on {len(point_l)} %s'%now())
+#         gser_raw = gpd.GeoSeries(point_l,crs=ds.crs)
+#         
+#         #handle mask
+#         gser = set_mask(gser_raw, drop_mask)            
+#         
+#     gser.name = os.path.basename(rlay_fp)
+#     return gser
+# 
+#===============================================================================
 
 
 
