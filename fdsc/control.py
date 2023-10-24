@@ -268,7 +268,7 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
             
         log.info(f'finished \'{method}\' in {tdelta} on\n    {ofp}')
         
-        return {'WSE1':ofp}, meta_lib
+        return ofp, meta_lib
     
     def run_dsc_multi(self,
                       dem1_fp,wse2_fp,
