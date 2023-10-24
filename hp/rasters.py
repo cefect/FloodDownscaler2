@@ -15,7 +15,7 @@ import numpy.ma as ma
 import pandas as pd
 
 from hp.rio import write_array
-from hp.gpd import rlay_to_gdf
+#from hp.gpd import rlay_to_gdf
 from hp._params import temp_dir
 from tests._params import epsg, bounds
 

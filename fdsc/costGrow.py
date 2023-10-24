@@ -21,8 +21,8 @@ from hp.basic import now
 from hp.gdal import getNoDataCount
 from hp.rio import (
  
-    write_array, assert_spatial_equal, get_write_kwargs, rlay_calc1, load_array, write_clip,
-      get_ds_attr, get_stats2
+    write_array, assert_spatial_equal, load_array, 
+      get_ds_attr, 
     )
 
 from hp.riom import write_extract_mask, write_array_mask, assert_mask_fp

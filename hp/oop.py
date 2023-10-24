@@ -8,7 +8,7 @@ import logging.config
 #from qgis.core import QgsMapLayer
 from hp.dirz import delete_dir
 from hp.basic import today_str, dstr
-from hp.pd import nested_dict_to_dx, view
+from hp.pd import view
  
 from definitions import src_name
  
@@ -549,7 +549,7 @@ class Session(LogSession): #analysis with flexible loading of intermediate resul
         
         """
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('meta', subdir=False,ext='.xls',  **kwargs)
-        from hp.pd import nested_dict_to_dx
+        #from hp.pd import nested_dict_to_dx
         
         #convert to simple {tabn:dataframe}\
         res_d = dict()
