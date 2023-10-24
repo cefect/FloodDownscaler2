@@ -191,7 +191,8 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         # defaults
         #=======================================================================
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('dsc',  **kwargs)
-        if debug is None: debug=__debug__
+        if debug is None: 
+            debug= __debug__
         
         
         meta_lib = {'smry':{**{'today':self.today_str, 'method':method, 
@@ -433,8 +434,7 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         
         Pars
         ------
-        dsc_l: list
-            downscales to build
+ 
             
         method_pars: dict
             method name: kwargs
@@ -581,3 +581,6 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
  
 class Dsc_Session(Session, RioSession, Dsc_Session_skinny):
     """session controller for downscaling"""
+    
+    
+ 

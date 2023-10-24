@@ -1,54 +1,6 @@
 '''
 Methods for object-oriented-programming
-
-Notes
----------------
-#===============================================================================
-# INHERITANCE
-#===============================================================================
-I've spent far too many weeks of my life strugglig with inheritance
-    seems too difficult to balance simplicity, flexibility, and functionality
-    
-2022-10-23: it's that time of the year where I get confused about this. 
-    and realize I haven't been following my own advice.
-    now I'm thinking I should get rid of these helper scripts all together.
-    
-    As for oop inheritance, I see two main use cases:
-    single-children:
-        typical session where each class is spawned once,
-        separating 'children' from 'session' objects is not needed
-        each init can do setup and attribute assignment
-    
-    multiple-children
-        we have a single session, that spawns multiple instances of the same class
-        can be helpful when we have some complex iterative states (e.g., interacting agents)
-        some classes may need to separate setup from attribute assignment 
-            i.e. some things setup once (at session level), others each time a worker is spawned
-        
-        in these cases, need separate 'worker' and 'session' class (which inherits the worker)
-        worker should be setup to naievly expect the setup variables from the parent session
-            only those iterative attributes should be modified in workers init
-        most methods should live on the child worker
-        
-        session should handle all the setup which happens once
-            then init a single child worker
-            
-        any additional child spawning needed by the computation
-            should happen in specialized functions
-            where the attributes needed by the worker are built and passed by the caller
-            as recalling all these attributes can be onerous,
-                Basic has an 'init_pars_d' attribute which can store these (for retrival later)
-        
-    
-2021-10-31: settled on top down control
-    force the caller object to first extract any attributes they want to pass down
-    then run these through the childs init
-    i.e., the child is agnostic to the source of the attribute
-    this keeps the majority of scripts simple
-        scripts that want to get complicated with inheritance can do this at the caller level
-    
-    using the 'inher_d'  to store 'object adding the requirement':[attn] the object to use if it wants to spawn children
-        see get_inher_atts
+ 
 '''
 
 import os, sys, datetime, gc, copy, pickle, pprint, logging
@@ -104,7 +56,7 @@ class Basic(object): #simple base class
         Provides common methods and parameters for object based programming.
         
         TODO: break this apart into simpler responsibilities
-            logger?
+ 
             directories?
     
         Parameters

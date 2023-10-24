@@ -50,7 +50,7 @@ par_method_kwargs = {
 }
 
 par_algoMethodKwargs = ('method, kwargs', [(k,v) for k,v in par_method_kwargs.items()])
-
+#@pytest.mark.parametrize(*par_algoMethodKwargs)
  
 
 

@@ -5,7 +5,9 @@ Created on Dec. 4, 2022
 
 test downscaling methods
 '''
-
+#===============================================================================
+# IMPORTS----------
+#===============================================================================
 import pytest, copy, os, random, re
 import numpy as np
 import pandas as pd
@@ -18,6 +20,7 @@ xfail = pytest.mark.xfail
 #from fdsc.base import nicknames_d
 
 from fdsc.control import Dsc_Session as Session
+from fdsc.main import downscale
  
 #from fdsc.bufferLoop import ar_buffer
 from hp.rasters import get_rlay_fp
@@ -25,6 +28,7 @@ from hp.rasters import get_rlay_fp
 from tests.conftest import (
      proj_lib,get_aoi_fp, 
     par_method_kwargs,temp_dir,
+    par_algoMethodKwargs,
  
     )
  
@@ -116,7 +120,7 @@ def test_schu14(dem_fp, wse_fp, wrkr, backend):
 
  
 
-@pytest.mark.dev
+ 
 @pytest.mark.parametrize('dem_fp, wse_fp', [
     (toy_d['dem1'], toy_d['wse2']),
     #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['toy_d['wse2']'])
@@ -124,6 +128,17 @@ def test_schu14(dem_fp, wse_fp, wrkr, backend):
 @pytest.mark.parametrize('method_pars', [par_method_kwargs])
 def test_run_dsc_multi(dem_fp, wse_fp, method_pars, wrkr):
     wrkr.run_dsc_multi(dem_fp, wse_fp, method_pars=method_pars)
+    
+    
+
+@pytest.mark.dev
+@pytest.mark.parametrize('dem_fp, wse_fp', [
+    (toy_d['dem1'], toy_d['wse2']),
+    #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['toy_d['wse2']'])
+    ])
+@pytest.mark.parametrize(*par_algoMethodKwargs)
+def test_downscale(dem_fp, wse_fp, method, kwargs):
+    downscale(dem_fp, wse_fp, method=method, **kwargs)
  
     
     
