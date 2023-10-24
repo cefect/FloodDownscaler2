@@ -4,13 +4,21 @@ Tools for downscaling/disaggregating flood hazard grids
 
 ![alt text](./icon/logo_flood_rescale_20230205_600dpi.png)
 
-## TODO:
-integrate coms
-split case study from downscaling tool
-split definitions from parameters (which should go in the case study)
+ 
 
 ## Use
-see ./example
+To downscale a coarse WSE using a fine resolution DEM, the CLI in main.py can be used:
+```
+python fdsc\main.py <path_to_DEM> <path_to_WSE>
+```
+an example application with this CLI is provided in [example.bat](./example.bat)
+
+Alternatively, the `downscale` function can be called within a python script:
+```
+from fdsc.main import downscale
+downscale(<path_to_DEM>, <path_to_WSE>)
+>>> <path_to_WSE1>, {metadata}
+```
 
 ## Related projects
 [FloodDownscaler](https://github.com/cefect/FloodDownscaler): original repo for HESS publication work. decided to make this new repo as something shareable and more streamlined. 
