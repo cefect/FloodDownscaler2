@@ -63,16 +63,7 @@ PROJECT_DIR_NAME
 PROJECT_DIR_NAME\whitebox-tools
 PROJECT_DIR_NAME\whitebox-tools\target\release 
 ```
-
  
-
-whitebox tools (cefect's fork)
-`git submodule add https://github.com/cefect/whitebox-tools.git`
-
-    v2.2.0
-        git switch v2.2.0
-        
-    need to build this using rust (see below)
 
 
 ### definitions.py
@@ -84,14 +75,12 @@ src_dir = os.path.dirname(os.path.abspath(__file__))
 src_name = os.path.basename(src_dir)
 
 #location of logging configuration file
-logcfg_file=os.path.join(src_dir, r'coms\logger.conf')
+logcfg_file=os.path.join(src_dir, r'hp\logger.conf')
 
 #default working directory
 wrk_dir = r'L:\10_IO\fdsc2'
 
 #whitebox exe location
 wbt_dir = os.path.join(src_dir, r'whitebox-tools\target\release')
-
-#specify the latex install directory
-os.environ['PATH'] += R";c:\Users\cefect\AppData\Local\Programs\MiKTeX\miktex\bin\x64"
+ 
 ```
