@@ -12,7 +12,7 @@ import pytest, copy, os, random, re
 import numpy as np
 import pandas as pd
 
-import shapely.geometry as sgeo
+#import shapely.geometry as sgeo
  
 xfail = pytest.mark.xfail
 
@@ -137,8 +137,8 @@ def test_run_dsc_multi(dem_fp, wse_fp, method_pars, wrkr):
     #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['toy_d['wse2']'])
     ])
 @pytest.mark.parametrize(*par_algoMethodKwargs)
-def test_downscale(dem_fp, wse_fp, method, kwargs):
-    downscale(dem_fp, wse_fp, method=method, **kwargs)
+def test_downscale(dem_fp, wse_fp, method, kwargs, tmp_path):
+    downscale(dem_fp, wse_fp, method=method, out_dir=tmp_path, **kwargs)
  
     
     
