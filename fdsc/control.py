@@ -190,18 +190,21 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         #=======================================================================
         # defaults
         #=======================================================================
-        log, tmp_dir, out_dir, ofp, resname = self._func_setup('dsc',  **kwargs)
+        log, tmp_dir, out_dir, _, resname = self._func_setup('dsc',  **kwargs)
+      
+        
+        
         if debug is None: 
             debug= __debug__
         
         
         meta_lib = {'smry':{**{'today':self.today_str, 'method':method, 
                                'wse2_fp':os.path.basename(wse2_fp), 
-                               'dem_fp':dem1_fp, 'ofp':ofp}, 
+                               'dem_fp':dem1_fp,}, 
                             **self._get_init_pars(), #wont have aoi props as these are on the calling session
                             }}
         
-        skwargs = dict(logger=log, out_dir=out_dir, tmp_dir=tmp_dir)
+        skwargs = dict(logger=log, out_dir=tmp_dir, tmp_dir=tmp_dir)
         start = now()
  
         #=======================================================================
@@ -222,6 +225,9 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         
         self.downscale=downscale
         meta_lib['smry']['downscale']=downscale
+        
+        
+
         #=======================================================================
         # run algo
         #=======================================================================
@@ -247,6 +253,10 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         # wrap
         #=======================================================================
         # copy tover to the main result
+        out_resolution = meta_lib['dem_raw']['res'][0]
+        fn_raw = os.path.splitext(os.path.basename(wse2_fp))[0]
+        ofp = os.path.join(out_dir,f'{fn_raw}_fdsc-r{int(round(out_resolution,0)):02d}.tif' )  
+        
         if not ofp==wse1_fp:
             rshutil.copy(wse1_fp, ofp)
         

@@ -489,17 +489,24 @@ class Session(LogSession): #analysis with flexible loading of intermediate resul
             from definitions import wrk_dir
         kwargs['wrk_dir']=wrk_dir
         
-        #base directory
-        if base_dir is None:
-            base_dir = os.path.join(wrk_dir, 'outs', proj_name, run_name, today_str)
-        if not os.path.exists(base_dir):os.makedirs(base_dir)
-        kwargs['base_dir']=base_dir
+
             
         #output directory
         if out_dir is None:
-            out_dir = base_dir
+            out_dir = wrk_dir
+            
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+            
         kwargs['out_dir']=out_dir
         
+        #base directory
+        if base_dir is None:
+            base_dir = out_dir
+        if not os.path.exists(base_dir):os.makedirs(base_dir)
+        kwargs['base_dir']=base_dir
+        
+        #temporary directory
         if tmp_dir is None:
             tmp_dir = os.path.join(out_dir, 'temp_%s_%s'%(
                 obj_name, datetime.datetime.now().strftime('%M%S')))

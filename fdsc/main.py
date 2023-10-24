@@ -76,5 +76,5 @@ if __name__ == "__main__":
             kwargs[k] = e
             k = None
 
-    raise IOError('need to clean up the outputs')
+ 
     downscale(args.dem_fp, args.wse_fp, method=args.method, write_meta=args.write_meta, out_dir=args.out_dir, **kwargs)
