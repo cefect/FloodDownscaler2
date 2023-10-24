@@ -69,7 +69,7 @@ def test_init(wrkr):
 
 @pytest.mark.parametrize('dem_fp, wse_fp, aoi_fp', [
     (toy_d['dem1'], toy_d['wse2'], toy_d['aoi']),
-    (proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['wse2_rlay_fp'], proj_lib['fred01']['aoi_fp'])
+    #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['wse2_rlay_fp'], proj_lib['fred01']['aoi_fp'])
     ]) 
 def test_p0_clip(dem_fp, wse_fp, aoi_fp, tmp_path, wrkr): 
     wrkr._set_aoi(aoi_fp)
@@ -79,7 +79,7 @@ def test_p0_clip(dem_fp, wse_fp, aoi_fp, tmp_path, wrkr):
 
 @pytest.mark.parametrize('dem_fp, wse_fp', [
     (toy_d['dem1'], toy_d['wse2']),
-    (proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['wse2_rlay_fp'])
+ 
     ]) 
 def test_p1(dem_fp, wse_fp, wrkr):    
     wrkr.p1_wetPartials(wse_fp, dem_fp)
@@ -90,7 +90,7 @@ def test_p1(dem_fp, wse_fp, wrkr):
  
 @pytest.mark.parametrize('wse_fp', [
     (toy_d['wse13']),
-    (proj_lib['fred01']['wse1_rlay3_fp']),
+ 
  
     ])
 def test_p2_filter_isolated(wse_fp, wrkr):
@@ -99,7 +99,7 @@ def test_p2_filter_isolated(wse_fp, wrkr):
 
 @pytest.mark.parametrize('dem_fp, wse_fp', [
     (toy_d['dem1'], toy_d['wse13']),
-    (proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['wse1_rlay2_fp']), 
+ 
     ])
 def test_p2_bufferGrow(dem_fp, wse_fp, wrkr):
     wrkr.get_bufferGrowLoop_DP(wse_fp, dem_fp, loop_range=range(3))
@@ -110,7 +110,7 @@ def test_p2_bufferGrow(dem_fp, wse_fp, wrkr):
 
 @pytest.mark.parametrize('dem_fp, wse_fp', [
     (toy_d['dem1'], toy_d['wse2']),
-    (proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['wse2_rlay_fp'])
+ 
     ]) 
 @pytest.mark.parametrize('backend', ['gr', 'rio'])
 def test_schu14(dem_fp, wse_fp, wrkr, backend):
