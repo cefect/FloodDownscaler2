@@ -48,6 +48,8 @@ class CostGrow(WetPartials):
         super().__init__(run_dsc_handle_d=run_dsc_handle_d, **kwargs)
         
     def run_costGrow(self,wse_fp=None, dem_fp=None, 
+                     cost_fric_fp=None,
+                     clump_cnt=1,
                               **kwargs):
         """run CostGrow pipeline
         """
@@ -69,7 +71,10 @@ class CostGrow(WetPartials):
         #=======================================================================
         # p2: dry partials
         #=======================================================================
-        wse1_dp_fp, meta_lib['p2_DP'] = self.get_costGrow_DP(wse1_wp_fp, dem_fp,ofp=ofp, **skwargs)     
+        wse1_dp_fp, meta_lib['p2_DP'] = self.get_costGrow_DP(wse1_wp_fp, dem_fp,ofp=ofp, 
+                                                             cost_fric_fp=cost_fric_fp,
+                                                             clump_cnt=clump_cnt,
+                                                              **skwargs)     
  
         
         return wse1_dp_fp, meta_lib
@@ -77,7 +82,9 @@ class CostGrow(WetPartials):
         
         
     
-    def get_costGrow_DP(self, wse_fp, dem_fp, **kwargs):
+    def get_costGrow_DP(self, wse_fp, dem_fp,
+                        cost_fric_fp=None,clump_cnt=1,
+                         **kwargs):
         #=======================================================================
         # defaults
         #=======================================================================
@@ -90,7 +97,7 @@ class CostGrow(WetPartials):
         #=======================================================================
         # grow/buffer out the WSE values
         #=======================================================================
-        costAlloc_fp, meta_lib['costDistanceGrow'] = self.get_costDistanceGrow_wbt(wse_fp, **skwargs)
+        costAlloc_fp, meta_lib['costDistanceGrow'] = self.get_costDistanceGrow_wbt(wse_fp, cost_fric_fp=cost_fric_fp, **skwargs)
  
         #=======================================================================
         # stamp out DEM violators
@@ -111,7 +118,7 @@ class CostGrow(WetPartials):
         #=======================================================================
         # remove isolated 
         #======================================================================= 
-        wse1_ar2_fp, meta_lib['filter_iso'] = self._filter_isolated(wse1_ar1_fp,**skwargs)
+        wse1_ar2_fp, meta_lib['filter_iso'] = self._filter_isolated(wse1_ar1_fp,clump_cnt=clump_cnt, **skwargs)
         
         assert_spatial_equal(wse_fp, wse1_ar2_fp)
         #=======================================================================
@@ -176,8 +183,16 @@ class CostGrow(WetPartials):
         
         return wse1_ar1_fp, meta_d
 
-    def _filter_isolated(self, wse_fp, **kwargs):
-        """remove isolated cells from grid using WBT"""
+    def _filter_isolated(self, wse_fp, clump_cnt=1,
+                         **kwargs):
+        """remove isolated cells from grid using WBT
+        
+        
+        Params
+        -------
+        clump_cnt: int
+            number of clumps to select
+        """
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('filter_iso', subdir=False,  **kwargs)
         start = now()
         meta_d=dict()
@@ -209,11 +224,18 @@ class CostGrow(WetPartials):
             
             assert len(vals_ar)>1, f'wbt.clump failed to identify enough clusters\n    {clump_fp}'
             
-            max_clump_id = int(pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
-                        ).reset_index().dropna(subset='index').iloc[0, 0])
+            #===================================================================
+            # max_clump_id = int(pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
+            #             ).reset_index().dropna(subset='index').iloc[0, 0])
+            #===================================================================
+            
+            clump_df = pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
+                        ).reset_index().dropna(subset='index')
+                        
+            clump_ids = clump_df.iloc[0:clump_cnt, 0].values
             
             #build a mask of this
-            bx = ar==max_clump_id
+            bx = np.isin(ar, clump_ids)
             
             assert_partial_wet(bx)
             log.info(f'found main clump of {len(vals_ar)} with {bx.sum()}/{bx.size} unmasked cells'+\
@@ -253,8 +275,18 @@ class CostGrow(WetPartials):
         
         return ofp, meta_d
     
-    def get_costDistanceGrow_wbt(self, wse_fp,**kwargs):
-        """cost grow/allocation using WBT"""
+    def get_costDistanceGrow_wbt(self, wse_fp,
+                                 cost_fric_fp=None,
+                                 
+                                 **kwargs):
+        """cost grow/allocation using WBT
+        
+        Params
+        ----------
+        cost_fric_fp: str (optional)
+            filepath to cost friction raster
+            if None: netural cost is used
+        """
         start = now()
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('costGrow_wbt', subdir=False,  **kwargs)
         log.info(f'on {wse_fp}')
@@ -266,9 +298,10 @@ class CostGrow(WetPartials):
         wse_fp1 = os.path.join(tmp_dir, f'wse1_fnd.tif')
         assert self.convert_nodata_to_zero(wse_fp, wse_fp1) == 0
         
-        #build cost friction (constant)
-        cost_fric_fp = os.path.join(tmp_dir, f'cost_fric.tif')
-        assert self.new_raster_from_base(wse_fp, cost_fric_fp, value=1.0, data_type='float') == 0
+        #build cost friction (constant)\
+        if cost_fric_fp is None:
+            cost_fric_fp = os.path.join(tmp_dir, f'cost_fric.tif')
+            assert self.new_raster_from_base(wse_fp, cost_fric_fp, value=1.0, data_type='float') == 0
         meta_d['costFric_fp'] = cost_fric_fp
         
         #compute backlink raster
