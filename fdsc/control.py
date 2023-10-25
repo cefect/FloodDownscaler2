@@ -61,6 +61,11 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
                         clip_kwargs=dict(),
  
                         **kwargs):
+        
+        """nicely clip DEM and WSE rasters with different resolutions to an AOI
+        
+        
+        TODO: add caching"""
         #=======================================================================
         # defaults
         #=======================================================================
