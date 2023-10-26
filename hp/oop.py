@@ -223,7 +223,11 @@ class Basic(object): #simple base class
         # #temporary directory
         #=======================================================================
         if tmp_dir is None:
-            tmp_dir = os.path.join(self.tmp_dir, dkey)
+            tmp_dir = os.path.join(self.tmp_dir)
+            
+        if subdir:
+            tmp_dir = os.path.join(tmp_dir, dkey)
+            
         if not os.path.exists(tmp_dir):
             os.makedirs(tmp_dir)
             

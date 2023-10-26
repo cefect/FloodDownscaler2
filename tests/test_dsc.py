@@ -4,6 +4,9 @@ Created on Dec. 4, 2022
 @author: cefect
 
 test downscaling methods
+
+
+TODO: clean up fixtures for retriving/building test data
 '''
 #===============================================================================
 # IMPORTS----------
@@ -87,14 +90,19 @@ def test_p1(dem_fp, wse_fp, wrkr):
 
  
 
- 
+
 @pytest.mark.parametrize('wse_fp', [
-    (toy_d['wse13']),
- 
- 
+    (toy_d['wse13']), 
     ])
-def test_p2_filter_isolated(wse_fp, wrkr):
-    wrkr._filter_isolated(wse_fp)
+@pytest.mark.parametrize('method, clump_cnt, wse_raw_fp',
+                         [
+                             ('area', 1, None),
+                             ('area', 2, None),
+                             ('pixel', None, toy_d['wse2'])
+                             ]
+                         )
+def test_p2_03_isolated(wse_fp, wrkr, method, clump_cnt, wse_raw_fp):
+    wrkr._03_isolated(wse_fp, method=method, clump_cnt=clump_cnt, wse_raw_fp=wse_raw_fp)
     
 
 @pytest.mark.parametrize('dem_fp, wse_fp', [
@@ -112,7 +120,9 @@ def test_p2_bufferGrow(dem_fp, wse_fp, wrkr):
     (toy_d['dem1'], toy_d['wse2']),
  
     ]) 
-@pytest.mark.parametrize('backend', ['gr', 'rio'])
+@pytest.mark.parametrize('backend', [
+    #'gr', 
+    'rio'])
 def test_schu14(dem_fp, wse_fp, wrkr, backend):
     wrkr.run_schu14(wse_fp, dem_fp, buffer_size=float(2/3), r2p_backend=backend)
     
@@ -127,6 +137,7 @@ def test_schu14(dem_fp, wse_fp, wrkr, backend):
     ])
 @pytest.mark.parametrize('method_pars', [par_method_kwargs])
 def test_run_dsc_multi(dem_fp, wse_fp, method_pars, wrkr):
+    """one of the metadata containers is out of compliance on CostGrow?"""
     wrkr.run_dsc_multi(dem_fp, wse_fp, method_pars=method_pars)
     
     

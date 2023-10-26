@@ -43,6 +43,7 @@ use:
 """
 par_method_kwargs = {
     'CostGrow': {},
+    'CostGrow': dict(loss_frac=0.01),
     'Basic': {},
     'SimpleFilter': {},
     'BufferGrowLoop': {'loop_range': range(2)},
