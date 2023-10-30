@@ -61,6 +61,18 @@ def delete_dir(dirpath): #remove directory AND contents
     except Exception as e:
         pass
         #print('failed to remove directory %s /n    %s'%( dirpath, e))
+        
+        
+def _filesearch(search_dir, ext='.asc'):
+    fns = []
+    for root, dirs, files in os.walk(search_dir):
+        for file in files:
+            if file.endswith(ext):
+                fns.append(os.path.join(root, file))
+                
+    assert len(fns)==1, f'failed to get file from {search_dir}'
+    
+    return fns.pop(0)
  
 #===============================================================================
 # 
