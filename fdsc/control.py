@@ -342,7 +342,7 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
                                                   downscale=downscale,
                                                   resname=self._get_resname(name),
                                                   out_dir=os.path.join(out_dir, method),
-                                                  write_meta=True, 
+                                                  write_meta=False, 
                                                   method=method,
                                                   rkwargs=mkwargs)
                 
@@ -357,7 +357,11 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         # add relative paths
         #=======================================================================
         for k0, d0 in {k:v['fp'] for k,v in res_lib.items()}.items():
-            res_lib[k0]['fp_rel'] = {k0:self._relpath(fp) for k0, fp in d0.items()}
+            try:
+                res_lib[k0]['fp_rel'] = {k0:self._relpath(fp) for k0, fp in d0.items()}
+            except Exception as e:
+                """something wrong with format of CostGrow output"""
+                log.warning(f'failed to get relative path on \'{k0}\' w/\n  {e}')
  
         
         #=======================================================================

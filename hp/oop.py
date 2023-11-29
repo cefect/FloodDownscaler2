@@ -10,7 +10,7 @@ from hp.dirz import delete_dir
 from hp.basic import today_str, dstr
 from hp.pd import view
  
-from definitions import src_name
+from parameters import src_name
  
 
 import numpy as np
@@ -316,7 +316,7 @@ class LogSession(Basic):
         if logger is None:
             
             if logcfg_file is None:
-                from definitions import logcfg_file
+                from parameters import logcfg_file
                                 
             logger = self.from_cfg_file(logcfg_file=logcfg_file, out_dir=wrk_dir)
             
