@@ -17,7 +17,7 @@ import fiona.crs
 from pyproj.crs import CRS
 
 #project
-from definitions import src_dir
+from parameters import src_dir
 from tests._params import epsg, bounds
 from hp._params import temp_dir
 #from fdsc.base import nicknames_d

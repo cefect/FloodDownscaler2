@@ -141,3 +141,6 @@ dmypy.json
 #Windows shortcuts
 *.lnk
 definitions.py
+
+#VS Code
+/.vscode
