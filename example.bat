@@ -10,7 +10,7 @@ SET OUT_DIR=%USERPROFILE%\FloodDownscaler2
 call %~dp0\env\conda_activate.bat
 
 :: execute the downscaler
-python %~dp0\fdsc\main.py %DEM_FP% %WSE_FP% --out_dir %OUT_DIR%
+python %SRC_DIR%\fdsc\main.py %DEM_FP% %WSE_FP% --out_dir %OUT_DIR%
 
 :: launch the results window
 start "" %OUT_DIR%
