@@ -61,6 +61,16 @@ class CostGrow(WetPartials):
         -----------
         wse_fp: str
             coarse WSE to downsample
+
+        loss_frac: float
+            passed to self._02_decay
+
+        clump_cnt: int
+            passed to self._03_isolated
+
+        clump_method: str
+            passed to self._03_isolated
+
             
         """
         method='CostGrow'
@@ -70,9 +80,10 @@ class CostGrow(WetPartials):
         assert_type_fp(wse_fp, 'WSE')
         assert_type_fp(dem_fp, 'DEM')
         
-        #skwargs, meta_lib, log, ofp, start = self._func_setup_dsc(nicknames_d[method], wse_fp, dem_fp, **kwargs)
+ 
         downscale = self.downscale
         self._set_profile(dem_fp) #set raster profile
+
         #=======================================================================
         # p1: wet partials
         #=======================================================================                
@@ -398,8 +409,8 @@ class CostGrow(WetPartials):
             number of clumps to select
         
         method: str
-            method for selecting isolated flood groups
-            'area': take the n=clump_cnt largest areas (fast)
+            method for selecting isolated flood groups:
+            'area': take the n=clump_cnt largest areas (fast, only one implemented in FloodRescaler)
             'pixel': use polygons and points to select the groups of interest
             
             
@@ -413,7 +424,7 @@ class CostGrow(WetPartials):
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('03isolated', subdir=True,  **kwargs)
         start = now()
         meta_d=dict()
-        assert get_ds_attr(wse_fp, 'nodata')==-9999
+        get_ds_attr(wse_fp, 'nodata')==-9999
         assert_type_fp(wse_fp, 'WSE', msg='filter_iso input')
         #=======================================================================
         # #convert to mask
@@ -421,6 +432,7 @@ class CostGrow(WetPartials):
         """wbt.clump needs 1s and 0s"""
         mask_fp = write_extract_mask(wse_fp, out_dir=out_dir, maskType='native')
         assert_mask_fp(mask_fp,  maskType='native')
+
         #=======================================================================
         # #clump it
         #=======================================================================
@@ -443,11 +455,7 @@ class CostGrow(WetPartials):
             vals_ar, counts_ar = np.unique(clump_ar, return_counts=True, equal_nan=True)
             
             assert len(vals_ar)>1, f'wbt.clump failed to identify enough clusters\n    {clump_fp}'
-            
-            #===================================================================
-            # max_clump_id = int(pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
-            #             ).reset_index().dropna(subset='index').iloc[0, 0])
-            #===================================================================
+ 
             
             clump_df = pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
                         ).rename('pixel_cnt').reset_index().dropna(subset='index')
@@ -456,8 +464,7 @@ class CostGrow(WetPartials):
         # area-based selection
         #===================================================================
         log.debug(method)
-        if method == 'area':
-            
+        if method == 'area':            
             clump_ids = clump_df.iloc[0:clump_cnt, 0].values
             
 
@@ -510,12 +517,7 @@ class CostGrow(WetPartials):
             
             clump_ids = clump_poly_gdf.sjoin(wse_pts_gdf, how='inner', predicate='intersects')['VALUE_left'].unique()
             
- 
-            
             log.info(f'selected {bx.sum()}/{len(clump_df)} clumps by pixel intersect')
- 
-            
- 
             
             
         else:
