@@ -1,8 +1,12 @@
 """2023-11-29: running pluvial grid from Livio"""
 
 
-dem_fp=r'l:\10_IO\FloodRescaler\issues\10\Data\DEM_channel_corrected_clipped_aoiT01.tif'
-wse_fp=r'l:\10_IO\FloodRescaler\issues\10\Data\WSE_rp100_aoiT01.tif'
+# #cropped
+# dem_fp=r'l:\10_IO\FloodRescaler\issues\10\Data\DEM_channel_corrected_clipped_aoiT01.tif'
+# wse_fp=r'l:\10_IO\FloodRescaler\issues\10\Data\WSE_rp100_aoiT01.tif'
+
+dem_fp=r'l:\10_IO\FloodRescaler\issues\10\Data\DEM_channel_corrected_clipped.tif'
+wse_fp=r'l:\10_IO\FloodRescaler\issues\10\Data\WSE_rp100.tif'
 
 import os
 from fdsc.control import Dsc_Session
