@@ -224,6 +224,10 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
  
         meta_lib['wse_raw'] = get_meta(wse2_fp)
         meta_lib['dem_raw'] = get_meta(dem1_fp)
+
+        assert meta_lib['wse_raw']['nodata']==-9999, 'got bad nodata value. requires -9999'
+        assert meta_lib['dem_raw']['nodata']==-9999, 'got bad nodata value. requires -9999'
+
         
         if downscale is None:
             downscale = self.get_downscale(wse2_fp, dem1_fp)

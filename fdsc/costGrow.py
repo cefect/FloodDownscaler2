@@ -180,6 +180,7 @@ class CostGrow(WetPartials):
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('dem_filter', subdir=True,  **kwargs)
         assert_spatial_equal(dem_fp, wse_fp)
         
+        log.debug(f'on {wse_fp}')
         """no... often we pass a costDistance raster which is WSE-like, but has no nulls
         assert_type_fp(wse_fp, 'WSE')"""
         #=======================================================================
@@ -215,7 +216,8 @@ class CostGrow(WetPartials):
         #=======================================================================
         # meta
         #=======================================================================
-        assert_type_fp(wse1_ar1_fp, 'WSE')
+        assert get_ds_attr(wse1_ar1_fp, 'nodata')==-9999
+        assert_type_fp(wse1_ar1_fp, 'WSE', msg='WSE filtered by DEM')
         
         meta_d={'size':wse_ar.size, 'wse1_ar1_fp':wse1_ar1_fp}
         if __debug__:
@@ -424,7 +426,7 @@ class CostGrow(WetPartials):
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('03isolated', subdir=True,  **kwargs)
         start = now()
         meta_d=dict()
-        get_ds_attr(wse_fp, 'nodata')==-9999
+        assert get_ds_attr(wse_fp, 'nodata')==-9999
         assert_type_fp(wse_fp, 'WSE', msg='filter_iso input')
         #=======================================================================
         # #convert to mask
