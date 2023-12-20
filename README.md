@@ -44,7 +44,11 @@ build a python environment per ./environment.yml
 
 create and customize a ./definitions.py file (see below)
 
-### clone and build whitebox-tools
+### setting up whitebox-tools
+
+#### use some other build
+ammend the `wbt_dir` variable in `definitions.py` and the PYTHONPATH approriately. 
+#### clone and build
 project is setup to use whitebox-tools v2.2.0 as a submodule
 this can be achieved a number of ways, but the cleanest (also hardest) is to:
 - clone whitebox-tools into the repo as a submodule and point to the v2.2.0 release tag.
@@ -57,7 +61,9 @@ this can be achieved a number of ways, but the cleanest (also hardest) is to:
 
 
 ### PYTHONPATH
-replace PROJECT_DIR_NAME with the path to your repo. The last directory is created by building whitebox-tools.
+The project requires the PYTHONPATH to include the source directory, and two whitebox-tools directories. 
+
+Below is an example for a project that builds whitebox-tools from scratch. Replace PROJECT_DIR_NAME with the path to your repo. The last directory is created by building whitebox-tools.
 ```
 PROJECT_DIR_NAME
 PROJECT_DIR_NAME\whitebox-tools

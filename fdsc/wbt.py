@@ -42,7 +42,7 @@ class WBT_worker(Basic, WhiteboxTools):
         if build_dir is None:
             build_dir = wbt_dir
             
-        assert os.path.exists(build_dir)
+        assert os.path.exists(build_dir), 'bad directory for whitebox-tools... check definitions.py wbt_dir'
         self.set_whitebox_dir(build_dir)
         #print(f'set_whitebox_dir({build_dir})')
         
