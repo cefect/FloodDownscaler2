@@ -11,6 +11,9 @@ import os, datetime, shutil
 import numpy as np
 import numpy.ma as ma
 import pandas as pd
+
+from osgeo import gdal
+
 import rasterio as rio
 from rasterio import shutil as rshutil
 
@@ -115,6 +118,7 @@ class CostGrow(WetPartials):
                         cost_fric_fp=None,
                         clump_kwargs=dict(),
                         decay_kwargs=dict(),
+                        creationOptions=['COMPRESS=LZW'],
                          **kwargs):
         """treat dry partials with costGrow"""
         #=======================================================================
@@ -169,7 +173,11 @@ class CostGrow(WetPartials):
         #=======================================================================
         # wrap
         #=======================================================================
-        rshutil.copy(wse1_ar2_fp, ofp)
+        #copy to output and add some compression
+        gdal.Warp(ofp, wse1_ar2_fp, options= gdal.WarpOptions(creationOptions=creationOptions),callback=gdal.TermProgress_nocb)        
+        #rshutil.copy(wse1_ar2_fp, ofp)
+        
+        #meta
         tdelta = (now()-start).total_seconds()
         meta_lib['smry']['tdelta'] = tdelta
         log.info(f'finished in {tdelta:.2f} secs')
