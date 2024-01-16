@@ -136,6 +136,9 @@ class CostGrow(WetPartials):
         #=======================================================================
         # decay
         #=======================================================================
+        if not 'wse_raw_fp' in decay_kwargs:
+            decay_kwargs['wse_raw_fp'] = wse_fp
+            
         decay_fp, meta_lib['decay_distance'] = self._02_decay(costAlloc_fp, **decay_kwargs, **skwargs)
  
         #=======================================================================
@@ -149,14 +152,15 @@ class CostGrow(WetPartials):
             new_noDataCount = meta_lib['filter_dem']['violation_count']
             assert og_noDataCount>0            
             
-            assert   new_noDataCount<og_noDataCount
+            assert new_noDataCount<og_noDataCount, f'nodata expansion {new_noDataCount}<{og_noDataCount}'
             
             log.info(f'dryPartial growth from {og_noDataCount} to {new_noDataCount} nulls '+\
                      f'({new_noDataCount/og_noDataCount:.2f})')
         
         #=======================================================================
         # remove isolated 
-        #======================================================================= 
+        #=======================================================================
+  
         wse1_ar2_fp, meta_lib['filter_iso'] = self._03_isolated(wse1_ar1_fp,
                                                                     **clump_kwargs,
                                                                      **skwargs)
@@ -297,7 +301,10 @@ class CostGrow(WetPartials):
         
         Params
         -------
-        wse1_wp_fp: str
+        costAlloc_fp: str
+            filepath to the costDistance extrapolated WSE
+            see self._01_grow()
+        wse_raw_fp: str
             filepath to wet-partial treated downscaled WSE
             
         loss_frac: float
@@ -308,7 +315,7 @@ class CostGrow(WetPartials):
         
 
         
-        
+        assert not wse_raw_fp is None
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('02decay', subdir=True,  **kwargs)
         
         if loss_frac==0.0:
@@ -318,8 +325,9 @@ class CostGrow(WetPartials):
         meta_d=dict()
         
         assert_spatial_equal(costAlloc_fp, wse_raw_fp)
+        
         #=======================================================================
-        # prep wse mask
+        # convert WSE to binary inundation mask
         #=======================================================================
         with rio.open(wse_raw_fp, mode='r') as ds: 
             profile = ds.profile
@@ -339,6 +347,7 @@ class CostGrow(WetPartials):
         assert self.euclidean_distance(wse_raw_mask_fp, dist_fp)==0
         
         meta_d.update({'wse_raw_mask_fp':wse_raw_mask_fp, 'dist_fp':dist_fp})
+        
         #=======================================================================
         # distance-based decay
         #=======================================================================
@@ -421,6 +430,8 @@ class CostGrow(WetPartials):
             
         wse_raw_fp: str
             for method='pixel', raw WSE from which to get intersect points
+            ideally the raw coarse WSE input
+            see note below on resampling
             
         """
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('03isolated', subdir=True,  **kwargs)
@@ -509,6 +520,7 @@ class CostGrow(WetPartials):
             #===================================================================
             # intersect of clumps and wse coarse
             #===================================================================
+            """NOTE: could speed things up by coarsening t his"""
             wse_raw_pts = os.path.join(tmp_dir, 'wse_raw_points.shp') #needs to be a shapefile
             assert self.raster_to_vector_points(wse_raw_fp, wse_raw_pts) == 0
             

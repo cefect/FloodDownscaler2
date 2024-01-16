@@ -434,7 +434,6 @@ class GridTypes(object):
             raise AssertionError(f'got bad filepath\n    {fp}\n'+msg)
         
         #apply the assertion
-
         assert_func =  self.map_lib[dkey]['assert']
         
         self.apply_fp(fp, assert_func, msg=msg+f' w/ dkey={dkey}')
