@@ -66,10 +66,10 @@ class CostGrow(WetPartials):
             passed to self._02_decay
 
         clump_cnt: int
-            passed to self._03_isolated
+            passed to self._04_isolated
 
         clump_method: str
-            passed to self._03_isolated
+            passed to self._04_isolated
 
             
         """
@@ -144,7 +144,7 @@ class CostGrow(WetPartials):
         #=======================================================================
         # stamp out DEM violators
         #=======================================================================
-        wse1_ar1_fp, meta_lib['filter_dem'] = self._filter_dem_violators(dem_fp, decay_fp, **skwargs)
+        wse1_ar1_fp, meta_lib['filter_dem'] = self._03_filter_dem_violators(dem_fp, decay_fp, **skwargs)
         
         #report
         if __debug__:
@@ -161,7 +161,7 @@ class CostGrow(WetPartials):
         # remove isolated 
         #=======================================================================
   
-        wse1_ar2_fp, meta_lib['filter_iso'] = self._03_isolated(wse1_ar1_fp,
+        wse1_ar2_fp, meta_lib['filter_iso'] = self._04_isolated(wse1_ar1_fp,
                                                                     **clump_kwargs,
                                                                      **skwargs)
         
@@ -176,59 +176,7 @@ class CostGrow(WetPartials):
         
         return ofp, meta_lib
     
-    def _filter_dem_violators(self, dem_fp, wse_fp, **kwargs):
-        """replace WSe values with nodata where they dont exceed the DEM"""
-        #=======================================================================
-        # defautls
-        #=======================================================================
-        log, tmp_dir, out_dir, ofp, resname = self._func_setup('dem_filter', subdir=True,  **kwargs)
-        assert_spatial_equal(dem_fp, wse_fp)
-        
-        log.debug(f'on {wse_fp}')
-        """no... often we pass a costDistance raster which is WSE-like, but has no nulls
-        assert_type_fp(wse_fp, 'WSE')"""
-        #=======================================================================
-        # load arrays
-        #=======================================================================
-        with rio.open( #load arrays
-            wse_fp, mode='r') as ds:
-            wse_ar = ds.read(1)
-            assert not np.isnan(wse_ar).any(), 'shouldnt have any  nulls (we filled it!)'
-            
-        with rio.open(dem_fp, mode='r') as ds:
-            dem1_ar = ds.read(1)
-            
-        #=======================================================================
-        # #array math
-        #=======================================================================
-        bx_ar = wse_ar <= dem1_ar
-        assert_partial_wet(bx_ar, msg='wse_ar <= dem1_ar')
- 
-        wse1_mar1 = ma.array(
-            np.where(np.invert(bx_ar), wse_ar, np.nan),
-            mask=bx_ar, fill_value=-9999)
-        
-        log.info(f'filtered {bx_ar.sum()}/{bx_ar.size} wse values which dont exceed the DEM')
-        #=======================================================================
-        # #dump to raster
-        #=======================================================================
-        #rlay_kwargs = get_write_kwargs(dem_fp, driver='GTiff', masked=False)
-        wse1_ar1_fp = self.write_array(wse1_mar1, resname='wse1_ar3', 
-                                       out_dir=out_dir,  logger=log, ofp=ofp) 
-        
-        
-        #=======================================================================
-        # meta
-        #=======================================================================
-        assert get_ds_attr(wse1_ar1_fp, 'nodata')==-9999
-        assert_type_fp(wse1_ar1_fp, 'WSE', msg='WSE filtered by DEM')
-        
-        meta_d={'size':wse_ar.size, 'wse1_ar1_fp':wse1_ar1_fp}
-        if __debug__:
-            meta_d['violation_count'] = bx_ar.astype(int).sum()
-        
-        
-        return wse1_ar1_fp, meta_d
+    
     
     def _01_grow(self, wse_fp,
                                  cost_fric_fp=None,
@@ -241,6 +189,9 @@ class CostGrow(WetPartials):
         cost_fric_fp: str (optional)
             filepath to cost friction raster
             if None: netural cost is used
+            NoData values in the input cost surface image are ignored during processing and assigned NoData values in the outputs..
+            
+            
         """
         start = now()
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('01grow', subdir=True,  **kwargs)
@@ -402,8 +353,62 @@ class CostGrow(WetPartials):
         log.debug(f'applied decay to costAlloc raster')
         
         return costAlloc_decay_fp, meta_d
+    
+    def _03_filter_dem_violators(self, dem_fp, wse_fp, **kwargs):
+        """replace WSe values with nodata where they dont exceed the DEM"""
+        #=======================================================================
+        # defautls
+        #=======================================================================
+        log, tmp_dir, out_dir, ofp, resname = self._func_setup('03DEMfilter', subdir=True,  **kwargs)
+        assert_spatial_equal(dem_fp, wse_fp)
+        
+        log.debug(f'on {wse_fp}')
+        """no... often we pass a costDistance raster which is WSE-like, but has no nulls
+        assert_type_fp(wse_fp, 'WSE')"""
+        #=======================================================================
+        # load arrays
+        #=======================================================================
+        with rio.open( #load arrays
+            wse_fp, mode='r') as ds:
+            wse_ar = ds.read(1)
+            assert not np.isnan(wse_ar).any(), 'shouldnt have any  nulls (we filled it!)'
+            
+        with rio.open(dem_fp, mode='r') as ds:
+            dem1_ar = ds.read(1)
+            
+        #=======================================================================
+        # #array math
+        #=======================================================================
+        bx_ar = wse_ar <= dem1_ar
+        assert_partial_wet(bx_ar, msg='wse_ar <= dem1_ar')
+ 
+        wse1_mar1 = ma.array(
+            np.where(np.invert(bx_ar), wse_ar, np.nan),
+            mask=bx_ar, fill_value=-9999)
+        
+        log.info(f'filtered {bx_ar.sum()}/{bx_ar.size} wse values which dont exceed the DEM')
+        #=======================================================================
+        # #dump to raster
+        #=======================================================================
+        #rlay_kwargs = get_write_kwargs(dem_fp, driver='GTiff', masked=False)
+        wse1_ar1_fp = self.write_array(wse1_mar1, resname='wse1_ar3', 
+                                       out_dir=out_dir,  logger=log, ofp=ofp) 
+        
+        
+        #=======================================================================
+        # meta
+        #=======================================================================
+        assert get_ds_attr(wse1_ar1_fp, 'nodata')==-9999
+        assert_type_fp(wse1_ar1_fp, 'WSE', msg='WSE filtered by DEM')
+        
+        meta_d={'size':wse_ar.size, 'wse1_ar1_fp':wse1_ar1_fp}
+        if __debug__:
+            meta_d['violation_count'] = bx_ar.astype(int).sum()
+        
+        
+        return wse1_ar1_fp, meta_d
 
-    def _03_isolated(self, wse_fp, clump_cnt=1,
+    def _04_isolated(self, wse_fp, clump_cnt=1,
                          method='area',
                          min_pixel_frac=0.01,
                          wse_raw_fp=None,
@@ -434,7 +439,7 @@ class CostGrow(WetPartials):
             see note below on resampling
             
         """
-        log, tmp_dir, out_dir, ofp, resname = self._func_setup('03isolated', subdir=True,  **kwargs)
+        log, tmp_dir, out_dir, ofp, resname = self._func_setup('04isolated', subdir=True,  **kwargs)
         start = now()
         meta_d=dict()
         assert get_ds_attr(wse_fp, 'nodata')==-9999
