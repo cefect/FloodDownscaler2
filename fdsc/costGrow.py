@@ -160,7 +160,7 @@ class CostGrow(WetPartials):
             
             assert new_noDataCount<og_noDataCount, f'nodata expansion {new_noDataCount}<{og_noDataCount}'
             
-            log.info(f'dryPartial growth from {og_noDataCount} to {new_noDataCount} nulls '+\
+            log.debug(f'dryPartial growth from {og_noDataCount} to {new_noDataCount} nulls '+\
                      f'({new_noDataCount/og_noDataCount:.2f})')
         
         #=======================================================================
@@ -182,7 +182,7 @@ class CostGrow(WetPartials):
         #meta
         tdelta = (now()-start).total_seconds()
         meta_lib['smry']['tdelta'] = tdelta
-        log.info(f'finished in {tdelta:.2f} secs')
+        log.debug(f'finished in {tdelta:.2f} secs')
         
         return ofp, meta_lib
     
@@ -205,36 +205,41 @@ class CostGrow(WetPartials):
         """
         start = now()
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('01grow', subdir=True,  **kwargs)
-        log.info(f'on {wse_fp}')
+        log.debug(f'on {wse_fp}')
         meta_d = dict()
         #=======================================================================
         # costDistance
         #=======================================================================
         #fillnodata in wse (for source)
         wse_fp1 = os.path.join(tmp_dir, f'wse1_fnd.tif')
-        assert self.convert_nodata_to_zero(wse_fp, wse_fp1) == 0
+        if not self.convert_nodata_to_zero(wse_fp, wse_fp1)==0:
+            raise IOError('convert_nodata_to_zero')
+ 
         
         #build cost friction (constant)\
         if cost_fric_fp is None:
             cost_fric_fp = os.path.join(tmp_dir, f'cost_fric.tif')
-            assert self.new_raster_from_base(wse_fp, cost_fric_fp, value=1.0, data_type='float') == 0
+            if not self.new_raster_from_base(wse_fp, cost_fric_fp, value=1.0, data_type='float') == 0:
+                raise IOError('new_raster_from_base')
         meta_d['costFric_fp'] = cost_fric_fp
         
         #compute backlink raster
         backlink_fp = os.path.join(out_dir, f'backlink.tif')
-        assert self.cost_distance(wse_fp1, 
+        if not self.cost_distance(wse_fp1, 
             cost_fric_fp, 
-            os.path.join(tmp_dir, f'backlink.tif'), backlink_fp) == 0
+            os.path.join(tmp_dir, f'backlink.tif'), backlink_fp) == 0:
+            raise IOError('cost_distance')
         
         meta_d['backlink_fp'] = backlink_fp
             
-        log.info(f'built costDistance backlink raster \n    {backlink_fp}')
+        log.debug(f'built costDistance backlink raster \n    {backlink_fp}')
         
         #=======================================================================
         # costAllocation
         #=======================================================================
         costAlloc_fp = os.path.join(out_dir, 'costAllocation.tif')
-        assert self.cost_allocation(wse_fp1, backlink_fp, costAlloc_fp) == 0
+        if not self.cost_allocation(wse_fp1, backlink_fp, costAlloc_fp) == 0:
+            raise IOError('cost_allocation')
         meta_d['costAlloc_fp'] = costAlloc_fp
         
         #=======================================================================
@@ -247,7 +252,7 @@ class CostGrow(WetPartials):
         
         tdelta = (now() - start).total_seconds()
         meta_d['tdelta'] = tdelta
-        log.info(f'finished in {tdelta}\n    {costAlloc_fp}')
+        log.debug(f'finished in {tdelta}\n    {costAlloc_fp}')
         return costAlloc_fp, meta_d
     
  
@@ -306,7 +311,8 @@ class CostGrow(WetPartials):
         #=======================================================================
         dist_fp = os.path.join(tmp_dir, 'euclidean_distance.tif')
         #horizontal distance (not pixels)
-        assert self.euclidean_distance(wse_raw_mask_fp, dist_fp)==0        
+        if not self.euclidean_distance(wse_raw_mask_fp, dist_fp)==0:
+            raise IOError('euclidean_distance')        
         meta_d.update({'wse_raw_mask_fp':wse_raw_mask_fp, 'dist_fp':dist_fp})
         assert os.path.exists(dist_fp), f'wbt.euclidean_distance failed'
         log.debug(f'built euclidean_distance mask: \n    {dist_fp}')
@@ -397,7 +403,7 @@ class CostGrow(WetPartials):
             np.where(np.invert(bx_ar), wse_ar, np.nan),
             mask=bx_ar, fill_value=-9999)
         
-        log.info(f'filtered {bx_ar.sum()}/{bx_ar.size} wse values which dont exceed the DEM')
+        log.debug(f'filtered {bx_ar.sum()}/{bx_ar.size} wse values which dont exceed the DEM')
         #=======================================================================
         # #dump to raster
         #=======================================================================
@@ -466,7 +472,8 @@ class CostGrow(WetPartials):
         # #clump it
         #=======================================================================
         clump_fp = os.path.join(tmp_dir, 'clump.tif')
-        assert self.clump(mask_fp, clump_fp, diag=False, zero_back=True)==0
+        if not self.clump(mask_fp, clump_fp, diag=False, zero_back=True)==0:
+            raise IOError('clump')
         meta_d['clump_fp'] = clump_fp
         meta_d['clump_mask_fp'] = mask_fp
         
@@ -514,7 +521,7 @@ class CostGrow(WetPartials):
             bx = clump_df['pixel_cnt']>min(min_pixel_frac*clump_df['pixel_cnt'].sum(), 100)
             clump_ids = clump_df[bx].iloc[:,0].values
             
-            log.info(f'pre-selected {bx.sum()}/{len(bx)} clumps for pixel selection')
+            log.debug(f'pre-selected {bx.sum()}/{len(bx)} clumps for pixel selection')
             
             # build a mask of this
             bool_ar = np.isin(clump_ar, clump_ids)
@@ -530,7 +537,8 @@ class CostGrow(WetPartials):
             # polygonize clumps
             #===================================================================
             clump_vlay_fp = os.path.join(tmp_dir, 'clump_raster_to_vector_polygons.shp') #needs to be a shapefile
-            assert self.raster_to_vector_polygons(clump_fp1, clump_vlay_fp) == 0
+            if not self.raster_to_vector_polygons(clump_fp1, clump_vlay_fp) == 0:
+                raise IOError('raster_to_vector_polygons')
             log.debug(f'vectorized clumps to \n    {clump_vlay_fp}')
  
             #===================================================================
@@ -538,7 +546,8 @@ class CostGrow(WetPartials):
             #===================================================================
             """NOTE: could speed things up by coarsening t his"""
             wse_raw_pts = os.path.join(tmp_dir, 'wse_raw_points.shp') #needs to be a shapefile
-            assert self.raster_to_vector_points(wse_raw_fp, wse_raw_pts) == 0
+            if not self.raster_to_vector_points(wse_raw_fp, wse_raw_pts) == 0:
+                raise IOError('raster_to_vector_points')
             
             #load both vector layers
             clump_poly_gdf = gpd.read_file(clump_vlay_fp)
@@ -547,7 +556,7 @@ class CostGrow(WetPartials):
             
             clump_ids = clump_poly_gdf.sjoin(wse_pts_gdf, how='inner', predicate='intersects')['VALUE_left'].unique()
             
-            log.info(f'selected {bx.sum()}/{len(clump_df)} clumps by pixel intersect')
+            log.debug(f'selected {bx.sum()}/{len(clump_df)} clumps by pixel intersect')
             
             
         else:
@@ -557,7 +566,7 @@ class CostGrow(WetPartials):
         clump_bool_ar = np.isin(clump_ar, clump_ids)
         
         assert_partial_wet(clump_bool_ar)
-        log.info(f'found clumps of {len(vals_ar)} with {clump_bool_ar.sum()}/{clump_bool_ar.size} unmasked cells' + \
+        log.debug(f'found clumps of {len(vals_ar)} with {clump_bool_ar.sum()}/{clump_bool_ar.size} unmasked cells' + \
                  '(%.2f)' % (clump_bool_ar.sum() / clump_bool_ar.size))
         
         meta_d.update({'clump_cnt':len(counts_ar), 'clump_max_size':clump_bool_ar.sum()})
@@ -591,7 +600,7 @@ class CostGrow(WetPartials):
         tdelta = (now()-start).total_seconds()
         meta_d['tdelta'] = tdelta
         meta_d['ofp'] = ofp
-        log.info(f'wrote {wse_ar1.shape} in {tdelta:.2f} secs to \n    {ofp}')
+        log.debug(f'wrote {wse_ar1.shape} in {tdelta:.2f} secs to \n    {ofp}')
         
         return ofp, meta_d
     
