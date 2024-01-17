@@ -132,6 +132,7 @@ class CostGrow(WetPartials):
         assert_type_fp(wse_fp, 'WSE')
         self._set_profile(dem_fp) #set profile for session raster writing
         
+        log.debug(f'p2_costGrow_dp w/ cost_fric_fp={cost_fric_fp}')
         #=======================================================================
         # grow/buffer out the WSE values
         #=======================================================================
@@ -286,6 +287,7 @@ class CostGrow(WetPartials):
         
         assert_spatial_equal(costAlloc_fp, wse_raw_fp)
         
+        log.debug(f'on {os.path.basename(costAlloc_fp)} w/ loss_frac={loss_frac}')
         #=======================================================================
         # convert WSE to binary inundation mask
         #=======================================================================
@@ -304,10 +306,10 @@ class CostGrow(WetPartials):
         #=======================================================================
         dist_fp = os.path.join(tmp_dir, 'euclidean_distance.tif')
         #horizontal distance (not pixels)
-        assert self.euclidean_distance(wse_raw_mask_fp, dist_fp)==0
-        
+        assert self.euclidean_distance(wse_raw_mask_fp, dist_fp)==0        
         meta_d.update({'wse_raw_mask_fp':wse_raw_mask_fp, 'dist_fp':dist_fp})
-        
+        assert os.path.exists(dist_fp), f'wbt.euclidean_distance failed'
+        log.debug(f'built euclidean_distance mask: \n    {dist_fp}')
         #=======================================================================
         # distance-based decay
         #=======================================================================
@@ -359,7 +361,7 @@ class CostGrow(WetPartials):
         # wrap
         #=======================================================================
         meta_d.update({'decay_fp':decay_fp, 'costAlloc_decay_fp':costAlloc_decay_fp})
-        log.debug(f'applied decay to costAlloc raster')
+        log.debug(f'applied decay to costAlloc raster\n{meta_d}')
         
         return costAlloc_decay_fp, meta_d
     
