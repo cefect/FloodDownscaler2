@@ -13,6 +13,7 @@ import numpy.ma as ma
 import pandas as pd
 
 from osgeo import gdal
+gdal.UseExceptions()
 
 import rasterio as rio
 from rasterio import shutil as rshutil
