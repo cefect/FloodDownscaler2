@@ -55,7 +55,8 @@ class WBT_worker(Basic, WhiteboxTools):
         else:
             self.set_verbose_mode(False)
             
-        assert self.set_compress_rasters(compress_rasters)==0
+        if not self.set_compress_rasters(compress_rasters)==0:
+            raise IOError('set_compress_rasters')
             
 
         
@@ -67,7 +68,7 @@ class WBT_worker(Basic, WhiteboxTools):
                  f'    set_whitebox_dir({build_dir})\n'+\
                  f'    set_verbose_mode({__debug__})\n'+\
                  f'    set_compress_rasters({compress_rasters})\n'+\
-                 f'    set_default_callback(self.__callback__)\n'
+                 f'    set_default_callback(self.__callback__)'
                  #"Version information: {}".format(self.version())                
                  )
                  
