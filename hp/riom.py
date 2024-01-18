@@ -295,7 +295,7 @@ def assert_masked_ar(ar, msg=''):
         raise AssertionError(msg+f'\n    got {np.isnan(ar.data).sum()}/{ar.size} nulls outside of mask')
     
     if np.all(ar.mask):
-        raise AssertionError(msg+f'\n    passed array is fully m asked')
+        raise AssertionError(msg+f'\n    passed array is fully masked')
          
   
     
