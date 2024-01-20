@@ -568,7 +568,8 @@ class CostGrow(WetPartials):
             raise KeyError(method)
         
         # build a mask of this
-        assert len(clump_ids)>0, f'no clumps identified'
+        if not len(clump_ids)>0:
+            raise IOError(f'no clumps identified')
         clump_bool_ar = np.isin(clump_ar, clump_ids)
         
         assert_partial_wet(clump_bool_ar, msg=f'selected clumps')
