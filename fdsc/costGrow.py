@@ -536,6 +536,7 @@ class CostGrow(WetPartials):
             #===================================================================
             # polygonize clumps
             #===================================================================
+            """TODO: check this against gdal_polygonize"""
             clump_vlay_fp = os.path.join(tmp_dir, 'clump_raster_to_vector_polygons.shp') #needs to be a shapefile
             if not self.raster_to_vector_polygons(clump_fp1, clump_vlay_fp) == 0:
                 raise IOError('raster_to_vector_polygons')
