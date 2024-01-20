@@ -326,7 +326,7 @@ class RioSession(RioWrkr, SpatialBBOXWrkr):
         #=======================================================================
         # write
         #=======================================================================
-        log.info(f'writing {str(raw_ar.shape)}  to \n    {ofp}')
+        log.debug(f'writing {str(raw_ar.shape)}  to \n    {ofp}')
  
         return write_array2(raw_ar, ofp, **prof_d)       
     
