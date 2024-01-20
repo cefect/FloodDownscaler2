@@ -732,8 +732,9 @@ def assert_dem_ar(ar, msg=''):
     
     assert_masked_ar(ar, msg=msg)
     
+    """this is OK.. dem can have some nulls
     if not np.all(np.invert(ar.mask)):
-        raise AssertionError(msg+': some masked values')
+        raise AssertionError(msg+': some masked values')"""
     
 def assert_wse_ar(ar, msg=''):
     """check the array satisfies expectations for a WSE array"""

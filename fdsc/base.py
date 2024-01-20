@@ -193,6 +193,10 @@ def assert_dsc_res_lib(dsc_res_lib, level=1, msg=''):
                 
         
 def assert_type_fp(fp, dkey, **kwargs):
+    """ surprisngly expensive"""
+    if 'msg' in kwargs:
+        kwargs['msg']+='\n%s'%fp
+ 
     return HydTypes(dkey).assert_fp(fp, **kwargs)
     
         
