@@ -129,7 +129,11 @@ class CostGrow(WetPartials):
         skwargs = dict(logger=log, out_dir=tmp_dir, tmp_dir=tmp_dir)
         meta_lib={'smry':{'wse_fp':wse_fp}}
         start=now()
-        assert_type_fp(wse_fp, 'WSE')
+        
+        if __debug__: # true if Python was not started with an -O option
+            assert_type_fp(wse_fp, 'WSE')
+            assert_type_fp(dem_fp, 'DEM')
+            
         self._set_profile(dem_fp) #set profile for session raster writing
         
         log.debug(f'p2_costGrow_dp w/ cost_fric_fp={cost_fric_fp}')
@@ -564,9 +568,11 @@ class CostGrow(WetPartials):
             raise KeyError(method)
         
         # build a mask of this
+        assert len(clump_ids)>0, f'no clumps identified'
         clump_bool_ar = np.isin(clump_ar, clump_ids)
         
-        assert_partial_wet(clump_bool_ar)
+        assert_partial_wet(clump_bool_ar, msg=f'selected clumps')
+        
         log.debug(f'found clumps of {len(vals_ar)} with {clump_bool_ar.sum()}/{clump_bool_ar.size} unmasked cells' + \
                  '(%.2f)' % (clump_bool_ar.sum() / clump_bool_ar.size))
         
