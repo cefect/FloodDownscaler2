@@ -436,8 +436,9 @@ class Schuman14(DscBaseWorker):
     
     
     
-import pkg_resources
+
 def assert_georasters(v='0.5.24'):
+    import pkg_resources
     """check that the dependency is installed"""
     if not __debug__: # true if Python was not started with an -O option
         return
