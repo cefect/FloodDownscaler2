@@ -546,6 +546,8 @@ class CostGrow(WetPartials):
                 raise IOError('raster_to_vector_polygons')
             log.debug(f'vectorized clumps to \n    {clump_vlay_fp}')
  
+            if not os.path.exists(clump_vlay_fp):
+                raise IOError(f'wbt.raster_to_vector_polygons failed to generate a result')
             #===================================================================
             # intersect of clumps and wse coarse
             #===================================================================
@@ -558,7 +560,7 @@ class CostGrow(WetPartials):
             clump_poly_gdf = gpd.read_file(clump_vlay_fp)
             wse_pts_gdf = gpd.read_file(wse_raw_pts)
  
-            
+            """check this"""
             clump_ids = clump_poly_gdf.sjoin(wse_pts_gdf, how='inner', predicate='intersects')['VALUE_left'].unique()
             
             log.debug(f'selected {bx.sum()}/{len(clump_df)} clumps by pixel intersect')
