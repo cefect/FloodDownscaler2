@@ -559,6 +559,10 @@ class CostGrow(WetPartials):
             #load both vector layers
             clump_poly_gdf = gpd.read_file(clump_vlay_fp)
             wse_pts_gdf = gpd.read_file(wse_raw_pts)
+            
+            log.debug(f'computing intersect from {len(wse_pts_gdf)} raw points and {len(clump_poly_gdf)} clump polys')
+            
+            assert clump_poly_gdf.geometry.intersects(wse_pts_gdf.geometry).any(), f'clumps do not intersect with raw points'
  
             """check this"""
             clump_ids = clump_poly_gdf.sjoin(wse_pts_gdf, how='inner', predicate='intersects')['VALUE_left'].unique()
@@ -571,7 +575,9 @@ class CostGrow(WetPartials):
         
         # build a mask of this
         if not len(clump_ids)>0:
-            raise IOError(f'no clumps identified')
+            raise IOError(f'no clumps identified\n    wse_raw_pts:{wse_raw_pts}\n    clump_fp:{clump_fp}')
+        
+        
         clump_bool_ar = np.isin(clump_ar, clump_ids)
         
         assert_partial_wet(clump_bool_ar, msg=f'selected clumps')
