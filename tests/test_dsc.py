@@ -90,7 +90,7 @@ def test_p1(dem_fp, wse_fp, wrkr):
 
  
 
-
+@pytest.mark.dev
 @pytest.mark.parametrize('wse_fp', [
     (toy_d['wse13']), 
     ])
@@ -102,7 +102,7 @@ def test_p1(dem_fp, wse_fp, wrkr):
                              ]
                          )
 def test_p2_03_isolated(wse_fp, wrkr, method, clump_cnt, wse_raw_fp):
-    wrkr._03_isolated(wse_fp, method=method, clump_cnt=clump_cnt, wse_raw_fp=wse_raw_fp)
+    wrkr._04_isolated(wse_fp, method=method, clump_cnt=clump_cnt, wse_raw_fp=wse_raw_fp)
     
 
 @pytest.mark.parametrize('dem_fp, wse_fp', [
@@ -142,7 +142,7 @@ def test_run_dsc_multi(dem_fp, wse_fp, method_pars, wrkr):
     
     
 
-@pytest.mark.dev
+
 @pytest.mark.parametrize('dem_fp, wse_fp', [
     (toy_d['dem1'], toy_d['wse2']),
     #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['toy_d['wse2']'])

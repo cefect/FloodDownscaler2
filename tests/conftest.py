@@ -127,7 +127,7 @@ def get_aoi_fp(bbox, crs=crs_default, ofp=None):
     # write a vectorlayer from a single bounding box
     assert isinstance(bbox, Polygon)
     with fiona.open(ofp, 'w', driver='GeoJSON',
-        crs=fiona.crs.from_epsg(crs.to_epsg()),
+        crs=CRS.from_epsg(crs.to_epsg()),
         schema={'geometry': 'Polygon',
                 'properties': {'id':'int'},
             },
