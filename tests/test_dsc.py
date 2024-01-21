@@ -51,6 +51,10 @@ for k, ar in proj_ar_d.items():
  
 toy_d['aoi'] = get_aoi_fp(aoi_box, crs=crs_default)
 
+
+test_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'test_dsc')
+assert os.path.exists(test_data_dir)
+
 #===============================================================================
 # fixtures------------
 #===============================================================================
@@ -88,20 +92,19 @@ def test_p1(dem_fp, wse_fp, wrkr):
     wrkr.p1_wetPartials(wse_fp, dem_fp)
 
 
- 
+tdir = lambda x: os.path.join(test_data_dir, 'test_04_isolated', x) 
 
 @pytest.mark.dev
-@pytest.mark.parametrize('wse_fp', [
-    (toy_d['wse13']), 
-    ])
-@pytest.mark.parametrize('method, clump_cnt, wse_raw_fp',
+@pytest.mark.parametrize('method, clump_cnt, wse_raw_fp, wse_fp',
                          [
-                             ('area', 1, None),
-                             ('area', 2, None),
-                             ('pixel', None, toy_d['wse2'])
+                             ('area', 1, None, toy_d['wse13']),
+                             ('area', 2, None, toy_d['wse13']),
+                             ('pixel', None, toy_d['wse2'], toy_d['wse13']),
+                             ('pixel', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
+                             ('pixel_polygon', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
                              ]
                          )
-def test_p2_03_isolated(wse_fp, wrkr, method, clump_cnt, wse_raw_fp):
+def test_04_isolated(wse_fp, wrkr, method, clump_cnt, wse_raw_fp):
     wrkr._04_isolated(wse_fp, method=method, clump_cnt=clump_cnt, wse_raw_fp=wse_raw_fp)
     
 
