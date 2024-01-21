@@ -429,6 +429,12 @@ class CostGrow(WetPartials):
         
         return wse1_ar1_fp, meta_d
 
+
+
+
+
+
+
     def _04_isolated(self, wse_fp, clump_cnt=1,
                          method='area',
                          min_pixel_frac=0.01,
@@ -499,7 +505,10 @@ class CostGrow(WetPartials):
             
             clump_df = pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
                         ).rename('pixel_cnt').reset_index().dropna(subset='index')
-                        
+                     
+        #=======================================================================
+        # selection-------
+        #=======================================================================
         #===================================================================
         # area-based selection
         #===================================================================
@@ -512,72 +521,34 @@ class CostGrow(WetPartials):
         #=======================================================================
         # pixel-based selection
         #=======================================================================
-        elif method=='pixel':
-            assert isinstance(wse_raw_fp, str), 'for method=pixel must pass wse_raw_fp'
-            assert os.path.exists(wse_raw_fp)
-            log.debug(f'filtering clumps w/ min_pixel_frac={min_pixel_frac}')
-            
-            #===================================================================
-            # #drop some small clumps
-            #===================================================================
-            """because polygnoizing is very slow... want to drop any super small groups"""
-            #select using 100 or some fraction
-            bx = clump_df['pixel_cnt']>min(min_pixel_frac*clump_df['pixel_cnt'].sum(), 100)
-            clump_ids = clump_df[bx].iloc[:,0].values
-            
-            log.debug(f'pre-selected {bx.sum()}/{len(bx)} clumps for pixel selection')
-            
-            # build a mask of this
-            bool_ar = np.isin(clump_ar, clump_ids)
-            
-            #write as mask
-            clump_fp1 = write_array(np.where(bool_ar, clump_ar, np.nan), 
-                                    ofp=os.path.join(tmp_dir, 'clump_mask_pre-filter.tif'), 
-                                    masked=False, **profile)
-            
-            log.debug(f'wrote filtered clump mas to \n    {clump_fp1}')
-            
-            #===================================================================
-            # polygonize clumps
-            #===================================================================
-            """TODO: check this against gdal_polygonize"""
-            clump_vlay_fp = os.path.join(tmp_dir, 'clump_raster_to_vector_polygons.shp') #needs to be a shapefile
-            if not self.raster_to_vector_polygons(clump_fp1, clump_vlay_fp) == 0:
-                raise IOError('raster_to_vector_polygons')
-            log.debug(f'vectorized clumps to \n    {clump_vlay_fp}')
- 
-            if not os.path.exists(clump_vlay_fp):
-                raise IOError(f'wbt.raster_to_vector_polygons failed to generate a result')
+        elif method=='pixel':            
+            clump_vlay_fp = self._polygonize_clumps(min_pixel_frac, log, tmp_dir, profile, clump_ar, clump_df)
             #===================================================================
             # intersect of clumps and wse coarse
             #===================================================================
-            """NOTE: could speed things up by coarsening t his"""
-            wse_raw_pts = os.path.join(tmp_dir, 'wse_raw_points.shp') #needs to be a shapefile
-            if not self.raster_to_vector_points(wse_raw_fp, wse_raw_pts) == 0:
-                raise IOError('raster_to_vector_points')
+            try:
+                clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp)
+            except Exception as e:
+                log.warning(f'failed to compute clump intersect w/ method=\'pixel\'... trying with method=\'pixel_point\'')
+                clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp, geomType='polygon')
             
-            #load both vector layers
-            clump_poly_gdf = gpd.read_file(clump_vlay_fp)
-            wse_pts_gdf = gpd.read_file(wse_raw_pts)
+        elif method=='pixel_polygon':
             
-            log.debug(f'computing intersect from {len(wse_pts_gdf)} raw points and {len(clump_poly_gdf)} clump polys')
-            
-            assert clump_poly_gdf.geometry.intersects(wse_pts_gdf.geometry).any(), f'clumps do not intersect with raw points'
+            clump_vlay_fp = self._polygonize_clumps(min_pixel_frac, log, tmp_dir, profile, clump_ar, clump_df)
  
-            """check this"""
-            clump_ids = clump_poly_gdf.sjoin(wse_pts_gdf, how='inner', predicate='intersects')['VALUE_left'].unique()
-            
-            log.debug(f'selected {bx.sum()}/{len(clump_df)} clumps by pixel intersect')
-            
-            
+            clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp, geomType='polygon')
+             
         else:
             raise KeyError(method)
         
+        #=======================================================================
+        # wrap selection
+        #=======================================================================
         # build a mask of this
         if not len(clump_ids)>0:
-            raise IOError(f'no clumps identified\n    wse_raw_pts:{wse_raw_pts}\n    clump_fp:{clump_fp}')
+            raise IOError(f'no clumps identified\n    clump_fp:{clump_fp}')
         
-        
+        log.debug(f'selected {len(clump_ids)}/{len(clump_df)} clumps by pixel intersect')
         clump_bool_ar = np.isin(clump_ar, clump_ids)
         
         assert_partial_wet(clump_bool_ar, msg=f'selected clumps')
@@ -620,4 +591,80 @@ class CostGrow(WetPartials):
         
         return ofp, meta_d
     
+    def _polygonize_clumps(self, min_pixel_frac, log, tmp_dir, profile, clump_ar, clump_df):
+        """convert clump raster into polygons (with some pre-filtering)"""
+        log.debug(f'filtering clumps w/ min_pixel_frac={min_pixel_frac}')
+        #===================================================================
+        # #drop some small clumps
+        #===================================================================
+        """because polygnoizing is very slow... want to drop any super small groups""" #select using 100 or some fraction
+        bx = clump_df['pixel_cnt'] > min(min_pixel_frac * clump_df['pixel_cnt'].sum(), 100)
+        clump_ids = clump_df[bx].iloc[:, 0].values
+        log.debug(f'pre-selected {bx.sum()}/{len(bx)} clumps for pixel selection')
+        # build a mask of this
+        bool_ar = np.isin(clump_ar, clump_ids)
+        #write as mask
+        clump_fp1 = write_array(np.where(bool_ar, clump_ar, np.nan), 
+            ofp=os.path.join(tmp_dir, 'clump_mask_pre-filter.tif'), 
+            masked=False, **profile)
+        log.debug(f'wrote filtered clump mas to \n    {clump_fp1}')
+        #===================================================================
+        # polygonize clumps
+        #===================================================================
+        """TODO: check this against gdal_polygonize"""
+        clump_vlay_fp = os.path.join(tmp_dir, 'clump_raster_to_vector_polygons.shp') #needs to be a shapefile
+        if not self.raster_to_vector_polygons(clump_fp1, clump_vlay_fp) == 0:
+            raise IOError('raster_to_vector_polygons')
+        log.debug(f'vectorized clumps to \n    {clump_vlay_fp}')
+        if not os.path.exists(clump_vlay_fp):
+            raise IOError(f'wbt.raster_to_vector_polygons failed to generate a result')
+        
+        return clump_vlay_fp
+    
+    def _isolated_pixel_vector_select(self, raster_mask_fp, log, tmp_dir, vector_poly_fp,
+                                     geomType='point', 
+                                     ):
+        """identify the polygon attributes that intersect with a raster mask"""
+        assert isinstance(raster_mask_fp, str), 'for method=pixel must pass raster_mask_fp'
+        assert os.path.exists(raster_mask_fp)
+        """NOTE: could speed things up by coarsening t his"""
+        
+        wse_raw_vector = os.path.join(tmp_dir, f'wse_raw_{geomType}.shp') #needs to be a shapefile
+        
+        if geomType =='point':
+            
+            if not self.raster_to_vector_points(raster_mask_fp, wse_raw_vector) == 0:
+                raise IOError('raster_to_vector_points')
+            
+        elif geomType=='polygon':
+            if not self.raster_to_vector_polygons(raster_mask_fp, wse_raw_vector) == 0:
+                raise IOError('raster_to_vector_polygons')
+            
+        else:
+            raise KeyError(geomType)
+            
+        #load both vector layers
+        clump_poly_gdf = gpd.read_file(vector_poly_fp, 
+                                       #crs='EPSG:3035',
+                                       )
+        raw_vector_gdf = gpd.read_file(wse_raw_vector, 
+                                       #crs='EPSG:3035',
+                                       )
+        
+        #=======================================================================
+        # compute intersect
+        #=======================================================================
+        log.debug(f'computing intersect from {len(raw_vector_gdf)} raw {geomType} and {len(clump_poly_gdf)} clump polys')
+        
+        """doesnt work for polygon v polygon?
+        assert clump_poly_gdf.geometry.intersects(raw_vector_gdf.geometry).any(), f'clumps do not intersect with raw {geomType}'
+        """
+        
+        clump_ids = clump_poly_gdf.sjoin(raw_vector_gdf, how='inner', predicate='intersects')['VALUE_left'].unique()
+        
+        assert len(clump_ids)>0, f'clumps do not intersect with raw {geomType}'
+        
+        return clump_ids
+    
+ 
 
