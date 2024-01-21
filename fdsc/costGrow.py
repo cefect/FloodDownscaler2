@@ -487,6 +487,7 @@ class CostGrow(WetPartials):
         meta_d['clump_fp'] = clump_fp
         meta_d['clump_mask_fp'] = mask_fp
         
+        log.debug(f'isolated filter w/ method=\'{method}\' on \n    wse_fp:{wse_fp}')
         #=======================================================================
         # extract clump data
         #=======================================================================
@@ -506,18 +507,15 @@ class CostGrow(WetPartials):
             clump_df = pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
                         ).rename('pixel_cnt').reset_index().dropna(subset='index')
                      
+        log.debug(f'extracted clump data {clump_df.shape} from \n    {clump_fp}')
         #=======================================================================
         # selection-------
         #=======================================================================
         #===================================================================
         # area-based selection
-        #===================================================================
-        log.debug(method)
+ 
         if method == 'area':            
-            clump_ids = clump_df.iloc[0:clump_cnt, 0].values
-            
-
-        
+            clump_ids = clump_df.iloc[0:clump_cnt, 0].values        
         #=======================================================================
         # pixel-based selection
         #=======================================================================
@@ -529,7 +527,7 @@ class CostGrow(WetPartials):
             try:
                 clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp)
             except Exception as e:
-                log.warning(f'failed to compute clump intersect w/ method=\'pixel\'... trying with method=\'pixel_point\'')
+                log.error(f'failed to compute clump intersect w/ method=\'pixel\'... trying with method=\'pixel_point\'\n    {e}')
                 clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp, geomType='polygon')
             
         elif method=='pixel_polygon':
@@ -546,7 +544,7 @@ class CostGrow(WetPartials):
         #=======================================================================
         # build a mask of this
         if not len(clump_ids)>0:
-            raise IOError(f'no clumps identified\n    clump_fp:{clump_fp}')
+            raise IOError(f'no clumps identified')
         
         log.debug(f'selected {len(clump_ids)}/{len(clump_df)} clumps by pixel intersect')
         clump_bool_ar = np.isin(clump_ar, clump_ids)
@@ -593,6 +591,7 @@ class CostGrow(WetPartials):
     
     def _polygonize_clumps(self, min_pixel_frac, log, tmp_dir, profile, clump_ar, clump_df):
         """convert clump raster into polygons (with some pre-filtering)"""
+        log = log.getChild('polygonize')
         log.debug(f'filtering clumps w/ min_pixel_frac={min_pixel_frac}')
         #===================================================================
         # #drop some small clumps
@@ -607,7 +606,8 @@ class CostGrow(WetPartials):
         clump_fp1 = write_array(np.where(bool_ar, clump_ar, np.nan), 
             ofp=os.path.join(tmp_dir, 'clump_mask_pre-filter.tif'), 
             masked=False, **profile)
-        log.debug(f'wrote filtered clump mas to \n    {clump_fp1}')
+        
+        log.debug(f'wrote filtered clump mask to \n    {clump_fp1}')
         #===================================================================
         # polygonize clumps
         #===================================================================
@@ -619,6 +619,7 @@ class CostGrow(WetPartials):
         if not os.path.exists(clump_vlay_fp):
             raise IOError(f'wbt.raster_to_vector_polygons failed to generate a result')
         
+        log.debug(f'polygonized clumps to \n    {clump_vlay_fp}')
         return clump_vlay_fp
     
     def _isolated_pixel_vector_select(self, raster_mask_fp, log, tmp_dir, vector_poly_fp,
@@ -627,9 +628,15 @@ class CostGrow(WetPartials):
         """identify the polygon attributes that intersect with a raster mask"""
         assert isinstance(raster_mask_fp, str), 'for method=pixel must pass raster_mask_fp'
         assert os.path.exists(raster_mask_fp)
+        
+        log = log.getChild('vector')
         """NOTE: could speed things up by coarsening t his"""
         
+        
+        
         wse_raw_vector = os.path.join(tmp_dir, f'wse_raw_{geomType}.shp') #needs to be a shapefile
+        
+        log.debug(f'vectorizing from\n    {raster_mask_fp}\n    to:{wse_raw_vector}')
         
         if geomType =='point':
             
@@ -662,7 +669,10 @@ class CostGrow(WetPartials):
         
         clump_ids = clump_poly_gdf.sjoin(raw_vector_gdf, how='inner', predicate='intersects')['VALUE_left'].unique()
         
-        assert len(clump_ids)>0, f'clumps do not intersect with raw {geomType}'
+        if not len(clump_ids)>0:
+            raise IOError(f'clumps do not intersect with raw {geomType}')
+        
+        log.debug(f'identified {len(clump_ids)} intersecting clumps\n    {clump_ids}')
         
         return clump_ids
     
