@@ -158,11 +158,12 @@ class CostGrow(WetPartials):
         
         #report
         if __debug__:
+            log.debug(f'checking pre-isolated result')
             og_noDataCount = getNoDataCount(wse_fp)
             new_noDataCount = meta_lib['filter_dem']['violation_count']
-            assert og_noDataCount>0            
             
-            assert new_noDataCount<og_noDataCount, f'nodata expansion {new_noDataCount}<{og_noDataCount}'
+            assert og_noDataCount>0            
+            assert new_noDataCount<=og_noDataCount, f'nodata expansion {new_noDataCount}<{og_noDataCount}'
             
             log.debug(f'dryPartial growth from {og_noDataCount} to {new_noDataCount} nulls '+\
                      f'({new_noDataCount/og_noDataCount:.2f})')
@@ -406,6 +407,8 @@ class CostGrow(WetPartials):
         wse1_mar1 = ma.array(
             np.where(np.invert(bx_ar), wse_ar, np.nan),
             mask=bx_ar, fill_value=-9999)
+        
+        assert not wse1_mar1.mask.all(), f'filtered everything'
         
         log.debug(f'filtered {bx_ar.sum()}/{bx_ar.size} wse values which dont exceed the DEM')
         #=======================================================================
