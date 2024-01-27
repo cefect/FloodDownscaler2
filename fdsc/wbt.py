@@ -8,7 +8,7 @@ import os, logging, sys
 from whitebox_tools import WhiteboxTools
 from definitions import wbt_dir
 from hp.oop import Basic
-
+import config
  
 
 class WBT_worker(Basic, WhiteboxTools):
@@ -50,8 +50,8 @@ class WBT_worker(Basic, WhiteboxTools):
         self.set_default_callback(self.__callback__)
         
         #verbosity
-        if __debug__:
-            assert self.set_verbose_mode(True)==0
+        if not config.log_level==logging.INFO:
+            self.set_verbose_mode(True)
         else:
             self.set_verbose_mode(False)
             
