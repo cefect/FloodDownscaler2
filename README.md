@@ -34,12 +34,15 @@ downscale(<path_to_DEM>, <path_to_WSE>)
 [2112_agg_pub](https://github.com/cefect/2112_agg_pub): public repo of analysis for aggregation paper. 
 
 ## Installation
+TODO: make installation more user-friendly (e.g., containerization or setup-tools)
 
-build a python environment per ./environment.yml
+Installing FloodDownscaler2 is complex and customizeable and requires three basic steps:
+- build a python environment per ./environment.yml
+- create and customize a ./definitions.py file (see below)
+- install/setup whitebox-tools v2.2.0 (see below)
 
-create and customize a ./definitions.py file (see below)
-
-set paths for whitebox-tools v2.2.0
+Once setup is complete, its highly advisable to test your install by updating/running ./example.bat
+Typically, I build a conda/miniforge environment in windows ./env and write a batch script to activate this (`./env/conda_activate.bat`)
 
 ### setting up whitebox-tools
 Some of the functions depend on whitebox-tools (wbt) python API. For these to work, installing FloodDownscaler2 requires installing whitebox-tools (if you haven't already) and telling FloodDownscaler2 where to find it. Below is some guidance/instructions for configuring wbt; however, there are a few ways to do this and not all ways work on all systems. 
@@ -90,3 +93,8 @@ wrk_dir = r'L:\10_IO\fdsc2'
 wbt_dir = os.path.join(src_dir, r'whitebox-tools\target\release')
  
 ```
+
+## Tests
+pytests are in ./tests
+
+NOTE: coverage is poor

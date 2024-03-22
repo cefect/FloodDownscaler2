@@ -1,4 +1,7 @@
 :: example windows batch script for using FloodDownscaler2's CLI
+:: USE
+:: 1) install/build FloodDownscaler2 per the readme
+:: 2) configure the 'activate environment' section to properly activate your environment before the mian execution call (alternatively, you could call this batch script from your activated environment). 
 
 :: inputs/outputs
 SET WSE_FP=%~dp0\tests\data\ahr\wse2_clip.tif
