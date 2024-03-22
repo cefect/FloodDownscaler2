@@ -21,22 +21,17 @@ downscale(<path_to_DEM>, <path_to_WSE>)
 ```
 
 ## Related projects
-[FloodDownscaler](https://github.com/cefect/FloodDownscaler): original repo for HESS publication work. decided to make this new repo as something shareable and more streamlined. 
+[FloodDownscaler](https://github.com/cefect/FloodDownscaler): original repo for HESS publication work
 
 [FloodRescaler](https://github.com/cefect/FloodRescaler): public repo with QGIS processing script port (and aggregation tools)
 
 [rimpy](https://git.gfz-potsdam.de/bryant/rimpy): Tools for building, calibrating, and visualizing RIM2D models
  
-[2207_dscale2](https://github.com/cefect/2207_dscale2): **OLD** project for generating analog inundation grids with LISFLOOD. 
+[2207_dscale2](https://github.com/cefect/2207_dscale2): (**DISCONTINUED**) project for generating analog inundation grids with LISFLOOD. 
 
-[FloodPolisher](https://github.com/cefect/FloodPolisher): mid-2022 inundation downscaling work using simple growth. pyqgis. Should incorporate a version of this into this project. 
+[FloodPolisher](https://github.com/cefect/FloodPolisher): (**DISCONTINUED**) mid-2022 inundation downscaling work using simple growth. pyqgis. Should incorporate a version of this into this project. 
 
 [2112_agg_pub](https://github.com/cefect/2112_agg_pub): public repo of analysis for aggregation paper. 
-
-
-    
-
-
 
 ## Installation
 
@@ -44,18 +39,31 @@ build a python environment per ./environment.yml
 
 create and customize a ./definitions.py file (see below)
 
-### setting up whitebox-tools
+set paths for whitebox-tools v2.2.0
 
-#### use some other build
-ammend the `wbt_dir` variable in `definitions.py` and the PYTHONPATH approriately. 
-#### clone and build
-project is setup to use whitebox-tools v2.2.0 as a submodule
-this can be achieved a number of ways, but the cleanest (also hardest) is to:
+### setting up whitebox-tools
+Some of the functions depend on whitebox-tools (wbt) python API. For these to work, installing FloodDownscaler2 requires installing whitebox-tools (if you haven't already) and telling FloodDownscaler2 where to find it. Below is some guidance/instructions for configuring wbt; however, there are a few ways to do this and not all ways work on all systems. 
+
+#### wbt is already installed
+ammend the `wbt_dir` variable in `definitions.py` to point to the directory contining your  whitebox_tools.exe 
+ammend your PYTHONPATH as shown below
+
+#### install wbt from precompiled binary
+compiled binaries are available [here](https://www.whiteboxgeo.com/download-direct/) for common systems. 
+
+#### building wbt from source
+
+
+
+#### building wbt from source as a submodule
+
+This is the preferred method as it provides greater version control. Typically, FloodDownscaler2 project is setup to use whitebox-tools v2.2.0 as a submodule. 
+Typical workflow:
 - clone whitebox-tools into the repo as a submodule and point to the v2.2.0 release tag.
 `git submodule add -b v2.2.0 https://github.com/cefect/whitebox-tools.git`
 - compile the tools. call the below within the newly cloned submodule folder. this may take a while and requires you to have rust installed (see whitebox-tools documentation for more info)
 `cargo build --release`
-- update your python path to the below
+- update paths per the above
 
 
 
@@ -69,8 +77,6 @@ PROJECT_DIR_NAME
 PROJECT_DIR_NAME\whitebox-tools
 PROJECT_DIR_NAME\whitebox-tools\target\release 
 ```
- 
-
 
 ### definitions.py
 
