@@ -5,7 +5,8 @@ Created on Jan. 6, 2023
 
 base objects and functions for all dsc scripts
 '''
-import datetime, os
+import datetime, os, math, warnings
+ 
 import pandas as pd
 import numpy as np
 import numpy.ma as ma
@@ -84,7 +85,22 @@ class DscBaseWorker(object):
         
         if self.downscale is None:          
             
-            self.downscale = self.get_resolution_ratio(fp1, fp2)
+            downscale_raw = self.get_resolution_ratio(fp1, fp2)
+            
+            # Check if ratio is approximately an integer (within a tolerance)
+            if not math.isclose(downscale_raw, round(downscale_raw), abs_tol=1e-6):
+                raise ValueError(
+                    f"Resolution ratio {downscale_raw:.6f} does not approximate an integer within 6 decimal places."
+                )
+        
+            # Check if ratio is a perfect integer (optional, for stricter requirements)
+            elif downscale_raw != round(downscale_raw):
+                warnings.warn(f'Resolution ratio {downscale_raw:.6f} is not a perfect integer.')
+        
+            # Round the ratio to the nearest integer and proceed
+            self.downscale = round(downscale_raw)
+            
+            
             
         assert self.downscale>=1.0
         return self.downscale
