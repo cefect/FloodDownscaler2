@@ -199,7 +199,7 @@ class CostGrow(WetPartials):
     
     
     
-    def _01_grow(self, wse_fp,
+    def _01_grow(self, wse_raw_fp,
                                  cost_fric_fp=None,
                                  
                                  **kwargs):
@@ -216,29 +216,48 @@ class CostGrow(WetPartials):
         """
         start = now()
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('01grow', subdir=True,  **kwargs)
-        log.debug(f'on {wse_fp}')
+        log.debug(f'on {wse_raw_fp}')
         meta_d = dict()
         #=======================================================================
         # costDistance
         #=======================================================================
+        add_increment=False
+        #add arbitrary increment to handle negative WSE
+        with rio.open(wse_raw_fp) as src:
+            ar_raw = src.read(1, masked=True)
+            if ar_raw.min()<0:
+                add_increment=True
+                log.warning(f'adding increment to handle negative WSE')
+ 
+                wse_fp = os.path.join(tmp_dir, f'00_wse_increment.tif')                
+                with rio.open(wse_fp, "w", **src.profile) as dst:
+                    dst.write(ar_raw + 9999, 1, masked=True) 
+                
+            else:
+                wse_fp = wse_raw_fp
+                
+                
+        
         #fillnodata in wse (for source)
-        wse_fp1 = os.path.join(tmp_dir, f'wse1_fnd.tif')
+        wse_fp1 = os.path.join(tmp_dir, f'01_wse1_fnd.tif')
         if not self.convert_nodata_to_zero(wse_fp, wse_fp1)==0:
             raise IOError('convert_nodata_to_zero')
  
         
         #build cost friction (constant)\
         if cost_fric_fp is None:
-            cost_fric_fp = os.path.join(tmp_dir, f'cost_fric.tif')
+            cost_fric_fp = os.path.join(tmp_dir, f'02_cost_fric.tif')
             if not self.new_raster_from_base(wse_fp, cost_fric_fp, value=1.0, data_type='float') == 0:
                 raise IOError('new_raster_from_base')
         meta_d['costFric_fp'] = cost_fric_fp
         
         #compute backlink raster
-        backlink_fp = os.path.join(out_dir, f'backlink.tif')
-        if not self.cost_distance(wse_fp1, 
+        backlink_fp = os.path.join(out_dir, f'03_backlink.tif')
+        if not self.cost_distance(
+            wse_fp1, 
             cost_fric_fp, 
-            os.path.join(tmp_dir, f'backlink.tif'), backlink_fp) == 0:
+            os.path.join(tmp_dir, f'out_accum.tif'), 
+            backlink_fp) == 0:
             raise IOError('cost_distance')
         
         meta_d['backlink_fp'] = backlink_fp
@@ -248,14 +267,27 @@ class CostGrow(WetPartials):
         #=======================================================================
         # costAllocation
         #=======================================================================
-        costAlloc_fp = os.path.join(out_dir, 'costAllocation.tif')
+        costAlloc_fp = os.path.join(out_dir, '04_costAllocation.tif')
         if not self.cost_allocation(wse_fp1, backlink_fp, costAlloc_fp) == 0:
             raise IOError('cost_allocation')
         meta_d['costAlloc_fp'] = costAlloc_fp
         
         #=======================================================================
+        # revert increment
+        #=======================================================================
+        if add_increment:
+            log.debug(f'reverting increment')
+            with rio.open(costAlloc_fp) as src:
+                ar_raw = src.read(1, masked=False)
+                
+                costAlloc_fp = os.path.join(out_dir, '05_costAllocation_revert.tif')             
+                with rio.open(costAlloc_fp, "w", **src.profile) as dst:
+                    dst.write(ar_raw - 9999, 1, masked=False) 
+        #=======================================================================
         # wrap
         #=======================================================================
+        
+        
         
         
         assert_spatial_equal(costAlloc_fp, wse_fp)
@@ -537,6 +569,7 @@ class CostGrow(WetPartials):
                 'area': take the n=clump_cnt largest areas (fast, only one implemented in FloodRescaler)
                 'pixel': use polygons and points to select the groups of interest
                 'pixel_polygon'
+                'skimage_label': use skimage raster-based label selection
             
             
         min_pixel_frac: float

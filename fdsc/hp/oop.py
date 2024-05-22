@@ -330,7 +330,7 @@ class LogSession(Basic):
         # duplicate logger
         #=======================================================================
         if logfile_duplicate:
-            from hp.logr import get_new_file_logger
+            from .logr import get_new_file_logger
             get_new_file_logger(
                 fp=os.path.join(self.out_dir, '%s_%s.log'%(
                     self.fancy_name, datetime.datetime.today().strftime('%m%d.%H.%M'))),
