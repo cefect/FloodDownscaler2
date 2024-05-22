@@ -11,13 +11,13 @@ import numpy as np
 import numpy.ma as ma
 import rasterio as rio
 
-from hp.oop import Session
-from hp.rio import (
+from .hp.oop import Session
+from .hp.rio import (
     assert_rlay_simple, _get_meta, assert_spatial_equal, get_ds_attr, write_array2
     )
-from hp.riom import assert_masked_ar
-from hp.hyd import assert_wse_ar, assert_dem_ar, assert_partial_wet, HydTypes
-from hp.hyd import assert_wsh_ar as assert_wd_ar
+from .hp.riom import assert_masked_ar
+from .hp.hyd import assert_wse_ar, assert_dem_ar, assert_partial_wet, HydTypes
+from .hp.hyd import assert_wsh_ar as assert_wd_ar
 
  
 

@@ -22,16 +22,16 @@ import geopandas as gpd
 
 
 #helpers
-from hp.basic import now
-from hp.gdal import getNoDataCount
-from hp.rio import (
+from .hp.basic import now
+from .hp.gdal import getNoDataCount
+from .hp.rio import (
  
     write_array, assert_spatial_equal, load_array, 
       get_ds_attr, 
     )
 
-from hp.riom import write_extract_mask, write_array_mask, assert_mask_fp
-from hp.pd import view
+from .hp.riom import write_extract_mask, write_array_mask, assert_mask_fp
+from .hp.pd import view
 from fdsc.base import assert_type_fp
 
 #project

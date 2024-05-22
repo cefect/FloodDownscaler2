@@ -36,12 +36,12 @@ import shapely.geometry as sgeo
 import geopandas as gpd
  
 
-from hp.rio import (
+from .rio import (
     assert_rlay_simple, assert_spatial_equal, get_ds_attr, write_array2, 
     load_array, get_profile, is_raster_file, rlay_ar_apply, ErrGridTypes
     )
 
-from hp.riom import (
+from .riom import (
     write_array_mask, _dataset_to_mar, assert_mask_ar, rlay_mar_apply, load_mask_array,
     write_extract_mask, assert_masked_ar
     )

@@ -12,8 +12,8 @@ from rasterio import shutil as rshutil
 
 
 
-from hp.basic import now
-from hp.rio import (
+from .hp.basic import now
+from .hp.rio import (
     assert_rlay_simple, 
     write_array, 
 

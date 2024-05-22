@@ -6,9 +6,9 @@ Methods for object-oriented-programming
 import os, sys, datetime, gc, copy, pickle, pprint, logging
 import logging.config
 #from qgis.core import QgsMapLayer
-from hp.dirz import delete_dir
-from hp.basic import today_str, dstr
-from hp.pd import view
+from .dirz import delete_dir
+from .basic import today_str, dstr
+from .pd import view
  
 from parameters import src_name
  

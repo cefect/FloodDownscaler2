@@ -26,7 +26,7 @@ from fdsc.control import Dsc_Session as Session
 from fdsc.main import downscale
  
 #from fdsc.bufferLoop import ar_buffer
-from hp.rasters import get_rlay_fp
+from fdsc.hp.rasters import get_rlay_fp
 
 from tests.conftest import (
      proj_lib,get_aoi_fp, 

@@ -31,6 +31,10 @@ def downscale(
             
         method: str
             downsccaling method to apply
+                CostGrow
+                Basic
+                SimpleFilter
+                
             
         kwargs: dict
             key word arguments to pass to downscaling method

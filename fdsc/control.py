@@ -15,16 +15,16 @@ from rasterio.enums import Resampling, Compression
 
 import shapely.geometry as sgeo
 
-from hp.basic import dstr, now
-from hp.oop import Session
-from hp.rio import (
+from fdsc.hp.basic import dstr, now
+from fdsc.hp.oop import Session
+from fdsc.hp.rio import (
     assert_extent_equal,  RioSession,get_profile,
     write_array, assert_spatial_equal, write_clip,get_meta, get_bbox,
     write_resample, get_meta
     )
-from hp.pd import view
+from fdsc.hp.pd import view
  
-from hp.hyd import (
+from fdsc.hp.hyd import (
     HydTypes
     )
 

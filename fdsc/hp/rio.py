@@ -31,9 +31,9 @@ import scipy.ndimage
 #from skimage.transform import downscale_local_mean
 
 #import hp.gdal
-from hp.oop import Basic
-from hp.basic import dstr
-from hp.fiona import SpatialBBOXWrkr
+from .oop import Basic
+from .basic import dstr
+from .fiona import SpatialBBOXWrkr
 #from hp.plot import plot_rast #for debugging
 #import matplotlib.pyplot as plt
 
