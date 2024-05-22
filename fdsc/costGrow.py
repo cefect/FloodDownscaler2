@@ -224,6 +224,7 @@ class CostGrow(WetPartials):
         add_increment=False
         #add arbitrary increment to handle negative WSE
         with rio.open(wse_raw_fp) as src:
+
             ar_raw = src.read(1, masked=True)
             if ar_raw.min()<0:
                 add_increment=True
@@ -319,11 +320,14 @@ class CostGrow(WetPartials):
         loss_frac: float
             value multiiplied  by distance to obtain the loss value
             this is equivalent to the minimum expected water surface slope
+            WARNING: This has units... so if you're operating w/ lat,long, need a different value
             
         """
         
 
-        
+        #=======================================================================
+        # defaults
+        #=======================================================================
         assert not wse_raw_fp is None
         log, tmp_dir, out_dir, ofp, resname = self._func_setup('02decay', subdir=True,  **kwargs)
         
@@ -337,13 +341,17 @@ class CostGrow(WetPartials):
         
         log.debug(f'on {os.path.basename(costAlloc_fp)} w/ loss_frac={loss_frac}')
         #=======================================================================
-        # convert WSE to binary inundation mask
+        # convert WSE to binary inundation mask (1=wet)
         #=======================================================================
         with rio.open(wse_raw_fp, mode='r') as ds: 
+                        #check crs
+            if ds.crs.is_geographic:
+                log.warning(f'geographic CRS! be sure to adjust your decay factor')
+                
             profile = ds.profile
             mar = ds.read(1, masked=True)
             
-        wse_raw_mask_fp = os.path.join(tmp_dir, 'wse_raw_mask.tif')
+        wse_raw_mask_fp = os.path.join(tmp_dir, '01_wse_raw_mask.tif')
         with rio.open(wse_raw_mask_fp, 'w', **profile) as ds:
             ds.write(np.where(mar.mask, 0.0, 1.0), indexes=1)
         
@@ -352,7 +360,7 @@ class CostGrow(WetPartials):
         #=======================================================================
         # compute distance from mask
         #=======================================================================
-        dist_fp = os.path.join(tmp_dir, 'euclidean_distance.tif')
+        dist_fp = os.path.join(tmp_dir, '02_euclidean_distance.tif')
         #horizontal distance (not pixels)
         if not self.euclidean_distance(wse_raw_mask_fp, dist_fp)==0:
             raise IOError('euclidean_distance')        
@@ -362,7 +370,7 @@ class CostGrow(WetPartials):
         #=======================================================================
         # distance-based decay
         #=======================================================================
-        decay_fp = os.path.join(tmp_dir, 'decay.tif')
+        decay_fp = os.path.join(tmp_dir, '03_decay.tif')
         """still not working
         assert self.raster_calculator(decay_fp, statement=f'\'{dist_fp}\'*{loss_frac}')==0
         """
@@ -391,7 +399,7 @@ class CostGrow(WetPartials):
             
         
         #write the subtraction
-        costAlloc_decay_fp = os.path.join(out_dir, 'wse_decay.tif')
+        costAlloc_decay_fp = os.path.join(out_dir, '04_wse_decay.tif')
         with rio.open(costAlloc_decay_fp, 'w', **profile) as ds:
             
             #subtract and use original mask
