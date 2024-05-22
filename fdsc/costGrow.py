@@ -456,8 +456,9 @@ class CostGrow(WetPartials):
         
         method: str
             method for selecting isolated flood groups:
-            'area': take the n=clump_cnt largest areas (fast, only one implemented in FloodRescaler)
-            'pixel': use polygons and points to select the groups of interest
+                'area': take the n=clump_cnt largest areas (fast, only one implemented in FloodRescaler)
+                'pixel': use polygons and points to select the groups of interest
+                'pixel_polygon'
             
             
         min_pixel_frac: float
@@ -530,7 +531,7 @@ class CostGrow(WetPartials):
             try:
                 clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp)
             except Exception as e:
-                log.error(f'failed to compute clump intersect w/ method=\'pixel\'... trying with method=\'pixel_point\'\n    {e}')
+                log.error(f'failed to compute clump intersect w/ method=\'pixel\'... trying with method=\'pixel_polygon\'\n    {e}')
                 clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp, geomType='polygon')
             
         elif method=='pixel_polygon':

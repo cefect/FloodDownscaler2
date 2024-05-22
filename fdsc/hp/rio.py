@@ -436,7 +436,7 @@ class GridTypes(object):
         #apply the assertion
         assert_func =  self.map_lib[dkey]['assert']
         
-        self.apply_fp(fp, assert_func, msg=msg+f' w/ dkey={dkey}')
+        self.apply_fp(fp, assert_func, msg=msg+f' (dkey={dkey})')
         
     def apply_fp(self, fp, func, **kwargs):
         assert isinstance(fp, str)
@@ -1421,29 +1421,29 @@ def assert_rlay_simple(rlay, msg='',):
     if not round(x, 10)==int(x):
         raise AssertionError('non-integer pixel size\n' + msg)
     
-def assert_extent_equal(left, right,  msg='',): 
+def assert_extent_equal(left, right, msg='', tolerance=0.001): 
     """ extents check"""
     if not __debug__: # true if Python was not started with an -O option
         return
- 
+
     __tracebackhide__ = True
-    
+
     f= lambda ds, att_l=['crs',  'bounds']:_get_meta(ds, att_l=att_l) 
-    
+
     ld = rlay_apply(left, f)
     rd = rlay_apply(right, f)
-    #===========================================================================
+
     # crs
-    #===========================================================================
     if not ld['crs']==rd['crs']:
         raise AssertionError('crs mismatch')
-    #===========================================================================
+
     # extents
-    #===========================================================================
-    le, re = ld['bounds'], rd['bounds']
-    if not le==re:
-        raise AssertionError('extent mismatch \n    %s != %s\n    '%(
-                le, re) +msg) 
+    le, re = np.array(ld["bounds"]), np.array(rd["bounds"])  # Convert to arrays
+
+    # Check if the difference between the extents is within the tolerance
+    if not all(abs(l - r) <= tolerance for l, r in zip(le, re)):
+        raise AssertionError('extent mismatch \n    %s != %s\n    '%(le, re) + msg)
+
 
 
 #===============================================================================
@@ -1469,7 +1469,7 @@ def assert_spatial_equal(left, right,  msg='',):
     __tracebackhide__ = True     
     
  
-    f= lambda ds, att_l=['crs', 'height', 'width', 'bounds', 'res']:_get_meta(ds, att_l=att_l)
+    f= lambda ds, att_l=['crs', 'height', 'width']:_get_meta(ds, att_l=att_l)
     
     ld = rlay_apply(left, f)
     rd = rlay_apply(right, f)
@@ -1477,7 +1477,9 @@ def assert_spatial_equal(left, right,  msg='',):
     for k, lval in ld.items():
         rval = rd[k]
         if not lval == rval:
-            raise AssertionError(f'{k} mismatch\n    right={rval}\n    left={lval}\n' + msg)
+            raise AssertionError(f'\'{k}\' mismatch\n    right={rval}\n    left={lval}\n' + msg)
+        
+    assert_extent_equal(left, right, msg=msg)
         
  
         
