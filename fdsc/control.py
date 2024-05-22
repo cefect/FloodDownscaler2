@@ -186,6 +186,16 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         debug: bool, None
             optional flag to disable debugging on just this method (nice for run_dsc_multi)
             
+        
+        Returns
+        -----------
+        str
+            filepath to fine WSE GeoTiff
+        
+        dict
+            metadata
+        
+            
         Note
         -------
         no AOI clipping is performed. raster layers must have the same spatial extents. 
@@ -218,8 +228,8 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         #assert not os.path.exists(ofp), f'output exists\n    {ofp}'
         if debug:
             assert_extent_equal(wse2_fp, dem1_fp)
-            HydTypes('DEM').assert_fp(dem1_fp)
-            HydTypes('WSE').assert_fp(wse2_fp)
+            HydTypes('DEM').assert_fp(dem1_fp, msg=f'expectation check for\n    {dem1_fp}')
+            HydTypes('WSE').assert_fp(wse2_fp, msg=f'expectation check for\n    {wse2_fp}')
  
  
         meta_lib['wse_raw'] = get_meta(wse2_fp)
@@ -242,13 +252,13 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         #=======================================================================
         f = self.run_dsc_handle_d[method]
         
-        wse1_fp, d = f(wse_fp=wse2_fp, dem_fp=dem1_fp, **rkwargs, **skwargs)
-        #=======================================================================
-        # try:
-        #     wse1_fp, meta_lib = f(wse_fp=wse2_fp, dem_fp=dem1_fp, **skwargs)
-        # except Exception as e:
-        #     raise IOError(f'failed to execute algo \'{method}\' method \'{f.__name__}\' w/ \n    {e}')
-        #=======================================================================
+        
+        try:
+            wse1_fp, d = f(wse_fp=wse2_fp, dem_fp=dem1_fp, **rkwargs, **skwargs)
+        except Exception as e:
+            raise IOError(f'failed to execute algo \'{method}\' method \'{f.__name__}\' w/ \n    {e}')
+        
+        
         meta_lib.update(d)
  
         #=======================================================================
