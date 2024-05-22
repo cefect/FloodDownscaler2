@@ -559,7 +559,7 @@ class Session(LogSession): #analysis with flexible loading of intermediate resul
         
         
         """
-        log, tmp_dir, out_dir, ofp, resname = self._func_setup('meta', subdir=False,ext='.xls',  **kwargs)
+        log, tmp_dir, out_dir, ofp, resname = self._func_setup('meta', subdir=False,ext='.xlsx',  **kwargs)
         #from hp.pd import nested_dict_to_dx
         
         #convert to simple {tabn:dataframe}\
@@ -574,7 +574,7 @@ class Session(LogSession): #analysis with flexible loading of intermediate resul
         
         
         #write dict of dicts to frame
-        with pd.ExcelWriter(ofp, engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(ofp) as writer:
             for tabnm, dx in res_d.items():                
                 dx.to_excel(writer, sheet_name=tabnm, index=True, header=True)
         
