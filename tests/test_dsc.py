@@ -140,7 +140,9 @@ def test_schu14(dem_fp, wse_fp, wrkr, backend):
     ])
 @pytest.mark.parametrize('method_pars', [par_method_kwargs])
 def test_run_dsc_multi(dem_fp, wse_fp, method_pars, wrkr):
-    """one of the metadata containers is out of compliance on CostGrow?"""
+    """
+    FAILING: one of the metadata containers is out of compliance on CostGrow?
+    """
     wrkr.run_dsc_multi(dem_fp, wse_fp, method_pars=method_pars)
     
     
