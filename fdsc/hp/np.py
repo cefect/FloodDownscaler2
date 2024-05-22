@@ -161,6 +161,20 @@ def apply_block_reduce2(ar1, aggscale=2, func=np.mean):
 #  
 #===============================================================================
 
+
+def rebroadcast_tile(original_array, new_shape):
+    """only works for even multiples?"""
+    # Calculate the tile factors in both dimensions
+    tile_factor_x = new_shape[0] // original_array.shape[0]
+    tile_factor_y = new_shape[1] // original_array.shape[1]
+
+    # Use np.tile to rebroadcast the array
+    rebroadcasted_array = np.tile(original_array, (tile_factor_x, tile_factor_y))
+    
+    assert rebroadcasted_array.shape==new_shape
+
+    return rebroadcasted_array
+
 def get_support_ratio(ar_top, ar_bot):
         """get scale difference"""
         shape1 = ar_top.shape

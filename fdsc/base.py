@@ -12,6 +12,8 @@ import numpy as np
 import numpy.ma as ma
 import rasterio as rio
 
+from scipy.interpolate import interpn
+
 from .hp.oop import Session
 from .hp.rio import (
     assert_rlay_simple, _get_meta, assert_spatial_equal, get_ds_attr, write_array2
@@ -185,7 +187,30 @@ def rlay_extract(fp,
         
     return stats_d, ar
     
+def rebroadcast_array_interpn(original_array, new_shape, method='linear'):
+    """coarsen an array using interpolation
+    
+    similar to xarray.coarsen
+    
+    """
+    # Create an array of indices for the original array
+    old_indices = [np.arange(i) for i in original_array.shape]
 
+    # Create an array of indices for the new array
+    new_indices = np.mgrid[[slice(i) for i in new_shape]].reshape(len(new_shape),-1).T
+
+    # Scale new_indices so that it fits within the range of old_indices
+    new_indices = new_indices * np.array(original_array.shape) / np.array(new_shape)
+
+    # Use scipy's interpn function to interpolate the array
+    rebroadcasted_array = interpn(old_indices, original_array, new_indices, method=method, bounds_error=False, fill_value=None)
+
+    return rebroadcasted_array.reshape(new_shape)
+
+
+#===============================================================================
+# ASSERTIONS---------
+#===============================================================================
 def assert_dsc_res_lib(dsc_res_lib, level=1, msg=''):
     if not __debug__: # true if Python was not started with an -O option
         return
