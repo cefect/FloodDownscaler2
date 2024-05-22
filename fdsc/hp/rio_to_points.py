@@ -17,7 +17,7 @@ from shapely.geometry import Point
 
 import concurrent.futures
 import geopandas as gpd
-from hp.gpd import set_mask
+from .gpd import set_mask
 
 def now():
     return datetime.datetime.now()
