@@ -19,6 +19,7 @@ import rasterio as rio
 from rasterio import shutil as rshutil
 
 import geopandas as gpd
+import skimage
 
 
 #helpers
@@ -32,14 +33,19 @@ from .hp.rio import (
 
 from .hp.riom import write_extract_mask, write_array_mask, assert_mask_fp
 from .hp.pd import view
+from .hp.np import rebroadcast_tile
 from fdsc.base import assert_type_fp
 
 #project
 from fdsc.simple import WetPartials
 
 from fdsc.base import (
-    assert_dem_ar, assert_wse_ar, rlay_extract, assert_partial_wet
+    assert_dem_ar, assert_wse_ar, rlay_extract, assert_partial_wet, rebroadcast_array_interpn
     )
+
+
+
+
 
 class CostGrow(WetPartials):
     
@@ -438,12 +444,84 @@ class CostGrow(WetPartials):
 
 
 
+
+    def mask_isolated_skimage_label(self, wse_fp, wse_raw_fp, mask_fp):
+        """mask isolated inundation regions using skimage.label"""
+        #extract array  #0:dry, 1:wet
+        inun_fine_ar = np.nan_to_num(load_array(mask_fp, masked=False), nan=0.0)
+        
+        
+        # produce integer labels for each connected component
+        #0-valued pixels are considered as background pixels
+        labels, nlabels = skimage.measure.label(
+            inun_fine_ar, 
+            connectivity=1, 
+            return_num=True)
+        #===================================================================
+        # #identify those labels we want to keep
+        #===================================================================
+        #get wets on the raw
+        inun_raw_ar = np.invert(load_array(wse_raw_fp, masked=True).mask)
+    #resample the raw so the size matches
+        inun_raw_fine_ar = rebroadcast_array_interpn(inun_raw_ar, inun_fine_ar.shape, method='nearest').astype(bool)
+        """
+    
+        import matplotlib.pyplot as plt
+        
+        # Create a figure
+        
+        fig, axs = plt.subplots(1, 2, figsize=(10, 5))
+        
+        
+        
+        # Plot array1 in the first subplot
+        
+        axs[0].imshow(inun_raw_fine_ar, cmap='viridis')
+        
+        axs[0].set_title('inun_raw_fine_ar')
+        
+        
+        
+        # Plot array2 in the second subplot
+        
+        axs[1].imshow(inun_raw_ar, cmap='viridis')
+        
+        axs[1].set_title('inun_raw_ar')
+        
+        
+        
+        # Display the figure with the subplots
+        
+        plt.show()
+        
+        """
+        #skimage.transform.rescale(inun_raw_ar, (2.0,2.0))
+        assert inun_fine_ar.shape == inun_raw_fine_ar.shape
+        #those wet in both raw and downscaled
+        label_keep_bool_ar = np.logical_and(inun_raw_fine_ar, inun_fine_ar)
+        connected_labels = np.unique(labels[label_keep_bool_ar])
+        #===================================================================
+        # mask out disconnected
+        #===================================================================
+        with rio.open(wse_fp, mode='r') as ds:
+            #profile = ds.profile
+            wse_ar = load_array(ds, masked=True)
+            #rebuild with union on mask
+            wse_ar1 = ma.array(wse_ar.data, 
+                mask=np.logical_or(
+                    np.invert(np.isin(labels, connected_labels)), #mask those NOT selected
+                    wse_ar.mask), #mask dry
+                fill_value=wse_ar.fill_value)
+            
+            
+        return wse_ar1
+
     def _04_isolated(self, wse_fp, clump_cnt=1,
                          method='area',
                          min_pixel_frac=0.01,
                          wse_raw_fp=None,
                          **kwargs):
-        """remove isolated cells from grid using WBT
+        """remove isolated cells from grid  
         
         
         Params
@@ -483,95 +561,115 @@ class CostGrow(WetPartials):
         assert_mask_fp(mask_fp,  maskType='native')
 
         #=======================================================================
-        # #clump it
+        # wbt clump based
         #=======================================================================
-        clump_fp = os.path.join(tmp_dir, 'clump.tif')
-        if not self.clump(mask_fp, clump_fp, diag=False, zero_back=True)==0:
-            raise IOError('clump')
-        meta_d['clump_fp'] = clump_fp
-        meta_d['clump_mask_fp'] = mask_fp
-        
-        log.debug(f'isolated filter w/ method=\'{method}\' on \n    wse_fp:{wse_fp}')
-        #=======================================================================
-        # extract clump data
-        #=======================================================================
-        with rio.open(clump_fp, mode='r') as ds: 
-            profile = ds.profile
-                       
-            mar = load_array(ds, masked=True)
-            assert_partial_wet(mar.mask, 'expects some nodata cells on the clump result')
-            clump_ar = np.where(mar.mask, np.nan, mar.data)
+        if not method=='skimage_label':
+            #=======================================================================
+            # #clump it
+            #=======================================================================
+            clump_fp = os.path.join(tmp_dir, 'clump.tif')
+            if not self.clump(mask_fp, clump_fp, diag=False, zero_back=True)==0:
+                raise IOError('clump')
+            meta_d['clump_fp'] = clump_fp
+            meta_d['clump_mask_fp'] = mask_fp
             
-            #identify the largest clump
-            vals_ar, counts_ar = np.unique(clump_ar, return_counts=True, equal_nan=True)
-            
-            assert len(vals_ar)>1, f'wbt.clump failed to identify enough clusters\n    {clump_fp}'
- 
-            
-            clump_df = pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
-                        ).rename('pixel_cnt').reset_index().dropna(subset='index')
-                     
-        log.debug(f'extracted clump data {clump_df.shape} from \n    {clump_fp}')
-        #=======================================================================
-        # selection-------
-        #=======================================================================
-        #===================================================================
-        # area-based selection
- 
-        if method == 'area':            
-            clump_ids = clump_df.iloc[0:clump_cnt, 0].values        
-        #=======================================================================
-        # pixel-based selection
-        #=======================================================================
-        elif method=='pixel':            
-            clump_vlay_fp = self._polygonize_clumps(min_pixel_frac, log, tmp_dir, profile, clump_ar, clump_df)
+            log.debug(f'isolated filter w/ method=\'{method}\' on \n    wse_fp:{wse_fp}')
+            #=======================================================================
+            # extract clump data
+            #=======================================================================
+            with rio.open(clump_fp, mode='r') as ds: 
+                profile = ds.profile
+                           
+                mar = load_array(ds, masked=True)
+                assert_partial_wet(mar.mask, 'expects some nodata cells on the clump result')
+                clump_ar = np.where(mar.mask, np.nan, mar.data)
+                
+                #identify the largest clump
+                vals_ar, counts_ar = np.unique(clump_ar, return_counts=True, equal_nan=True)
+                
+                assert len(vals_ar)>1, f'wbt.clump failed to identify enough clusters\n    {clump_fp}'
+     
+                
+                clump_df = pd.Series(counts_ar, index=vals_ar).sort_values(ascending=False
+                            ).rename('pixel_cnt').reset_index().dropna(subset='index')
+                         
+            log.debug(f'extracted clump data {clump_df.shape} from \n    {clump_fp}')
+            #=======================================================================
+            # selection-------
+            #=======================================================================
             #===================================================================
-            # intersect of clumps and wse coarse
-            #===================================================================
-            try:
-                clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp)
-            except Exception as e:
-                log.error(f'failed to compute clump intersect w/ method=\'pixel\'... trying with method=\'pixel_polygon\'\n    {e}')
+            # area-based selection
+     
+            if method == 'area':            
+                clump_ids = clump_df.iloc[0:clump_cnt, 0].values        
+            #=======================================================================
+            # pixel-based selection
+            #=======================================================================
+            elif method=='pixel':            
+                clump_vlay_fp = self._polygonize_clumps(min_pixel_frac, log, tmp_dir, profile, clump_ar, clump_df)
+                #===================================================================
+                # intersect of clumps and wse coarse
+                #===================================================================
+                try:
+                    clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp)
+                except Exception as e:
+                    log.error(f'failed to compute clump intersect w/ method=\'pixel\'... trying with method=\'pixel_polygon\'\n    {e}')
+                    clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp, geomType='polygon')
+                
+            elif method=='pixel_polygon':
+                
+                clump_vlay_fp = self._polygonize_clumps(min_pixel_frac, log, tmp_dir, profile, clump_ar, clump_df)
+     
                 clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp, geomType='polygon')
-            
-        elif method=='pixel_polygon':
-            
-            clump_vlay_fp = self._polygonize_clumps(min_pixel_frac, log, tmp_dir, profile, clump_ar, clump_df)
  
-            clump_ids = self._isolated_pixel_vector_select(wse_raw_fp, log, tmp_dir, clump_vlay_fp, geomType='polygon')
-             
+            else:
+                raise KeyError(method)
+            
+            #=======================================================================
+            # wrap selection
+            #=======================================================================
+            # build a mask of this
+            if not len(clump_ids)>0:
+                raise IOError(f'no clumps identified')
+            
+            log.debug(f'selected {len(clump_ids)}/{len(clump_df)} clumps by pixel intersect')
+            clump_bool_ar = np.isin(clump_ar, clump_ids)
+            
+            assert_partial_wet(clump_bool_ar, msg=f'selected clumps')
+            
+            log.debug(f'found clumps of {len(vals_ar)} with {clump_bool_ar.sum()}/{clump_bool_ar.size} unmasked cells' + \
+                     '(%.2f)' % (clump_bool_ar.sum() / clump_bool_ar.size))
+            
+            meta_d.update({'clump_cnt':len(counts_ar), 'clump_max_size':clump_bool_ar.sum()})
+                
+            #=======================================================================
+            # construct filter mask from clump selection
+            #=======================================================================
+            with rio.open(wse_fp, mode='r') as ds:
+                profile = ds.profile
+                wse_ar = load_array(ds, masked=True)
+                
+                #rebuild with union on mask
+                wse_ar1 = ma.array(wse_ar.data, mask = np.logical_or(
+                    np.invert(clump_bool_ar), #not in the clump
+                    wse_ar.mask, #dry
+                    ), fill_value=wse_ar.fill_value)
+                
+ 
+        #=======================================================================
+        # skimage based              
+        #=======================================================================
+        elif method=='skimage_label':
+            
+            wse_ar1 = self.mask_isolated_skimage_label(wse_fp, wse_raw_fp, mask_fp)
+            
+            with rio.open(wse_fp, mode='r') as ds:
+                profile = ds.profile
+                wse_ar = load_array(ds, masked=True)
+            
         else:
             raise KeyError(method)
-        
-        #=======================================================================
-        # wrap selection
-        #=======================================================================
-        # build a mask of this
-        if not len(clump_ids)>0:
-            raise IOError(f'no clumps identified')
-        
-        log.debug(f'selected {len(clump_ids)}/{len(clump_df)} clumps by pixel intersect')
-        clump_bool_ar = np.isin(clump_ar, clump_ids)
-        
-        assert_partial_wet(clump_bool_ar, msg=f'selected clumps')
-        
-        log.debug(f'found clumps of {len(vals_ar)} with {clump_bool_ar.sum()}/{clump_bool_ar.size} unmasked cells' + \
-                 '(%.2f)' % (clump_bool_ar.sum() / clump_bool_ar.size))
-        
-        meta_d.update({'clump_cnt':len(counts_ar), 'clump_max_size':clump_bool_ar.sum()})
-            
-        #=======================================================================
-        # construct filter mask from clump selection
-        #=======================================================================
-        with rio.open(wse_fp, mode='r') as ds:
-            profile = ds.profile
-            wse_ar = load_array(ds, masked=True)
-            
-            #rebuild with union on mask
-            wse_ar1 = ma.array(wse_ar.data, mask = np.logical_or(
-                np.invert(clump_bool_ar), #not in the clump
-                wse_ar.mask, #dry
-                ), fill_value=wse_ar.fill_value)
+     
             
  
         #=======================================================================

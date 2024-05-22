@@ -97,11 +97,12 @@ tdir = lambda x: os.path.join(test_data_dir, 'test_04_isolated', x)
 @pytest.mark.dev
 @pytest.mark.parametrize('method, clump_cnt, wse_raw_fp, wse_fp',
                          [
-                             ('area', 1, None, toy_d['wse13']),
-                             ('area', 2, None, toy_d['wse13']),
-                             ('pixel', None, toy_d['wse2'], toy_d['wse13']),
-                             ('pixel', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
-                             ('pixel_polygon', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
+                            ('area', 1, None, toy_d['wse13']),
+                            ('area', 2, None, toy_d['wse13']),
+                            ('pixel', None, toy_d['wse2'], toy_d['wse13']),
+                            ('pixel', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
+                            ('pixel_polygon', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
+                             ('skimage_label', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
                              ]
                          )
 def test_04_isolated(wse_fp, wrkr, method, clump_cnt, wse_raw_fp):
