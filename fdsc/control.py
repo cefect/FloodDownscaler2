@@ -175,10 +175,10 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         Paramerters
         -------------
         wse2_fp: str
-            filepath to WSE raster layer at low-resolution (to be downscaled)
+            filepath to WSE raster layer at coarse resolution (to be downscaled)
             
         dem1_fp: str
-            filepath to DEM raster layer at high-resolution (used to infer downscaled WSE)
+            filepath to DEM raster layer at fine resolution (used to infer downscaled WSE)
             
         method: str
             downsccaling method to apply
