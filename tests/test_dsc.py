@@ -94,7 +94,7 @@ def test_p1(dem_fp, wse_fp, wrkr):
 
 tdir = lambda x: os.path.join(test_data_dir, 'test_04_isolated', x) 
 
-@pytest.mark.dev
+
 @pytest.mark.parametrize('method, clump_cnt, wse_raw_fp, wse_fp',
                          [
                             ('area', 1, None, toy_d['wse13']),
@@ -147,14 +147,17 @@ def test_run_dsc_multi(dem_fp, wse_fp, method_pars, wrkr):
     wrkr.run_dsc_multi(dem_fp, wse_fp, method_pars=method_pars)
     
     
+tdir = lambda x: os.path.join(os.path.dirname(test_data_dir), 'jordan', x) 
 
-
+@pytest.mark.dev
 @pytest.mark.parametrize('dem_fp, wse_fp', [
-    (toy_d['dem1'], toy_d['wse2']),
+    #(toy_d['dem1'], toy_d['wse2']),
     #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['toy_d['wse2']'])
+    (tdir('dem_fine_0522.tif'), tdir('wse_coarse_0522.tif')),
     ])
 @pytest.mark.parametrize(*par_algoMethodKwargs)
 def test_downscale(dem_fp, wse_fp, method, kwargs, tmp_path):
+    assert os.path.exists(dem_fp)
     downscale(dem_fp, wse_fp, method=method, out_dir=tmp_path, **kwargs)
  
     
