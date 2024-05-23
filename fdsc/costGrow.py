@@ -62,7 +62,7 @@ class CostGrow(WetPartials):
     def run_costGrow(self,wse_fp=None, dem_fp=None, 
                      cost_fric_fp=None,
                      clump_cnt=1,
-                     clump_method='pixel',
+                     clump_method='skimage_label',
                      loss_frac=0.0,
                               **kwargs):
         """run CostGrow pipeline
@@ -557,7 +557,7 @@ class CostGrow(WetPartials):
         return wse_ar1
 
     def _04_isolated(self, wse_fp, clump_cnt=1,
-                         method='area',
+                         method='skimage_label',
                          min_pixel_frac=0.01,
                          wse_raw_fp=None,
                          **kwargs):
@@ -577,7 +577,7 @@ class CostGrow(WetPartials):
                 'area': take the n=clump_cnt largest areas (fast, only one implemented in FloodRescaler)
                 'pixel': use polygons and points to select the groups of interest
                 'pixel_polygon'
-                'skimage_label': use skimage raster-based label selection
+                'skimage_label': use skimage raster-based label selection. seems to be fast and accurate.
             
             
         min_pixel_frac: float
