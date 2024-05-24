@@ -30,8 +30,8 @@ logging.getLogger("fiona.collection").setLevel(logging.WARNING)
 logging.getLogger("fiona.ogrext").setLevel(logging.WARNING)
 logging.getLogger("fiona").setLevel(logging.WARNING)
 
-from hp.pd import view
-from hp.rio import get_meta, write_array2, get_write_kwargs
+from .pd import view
+from .rio import get_meta, write_array2, get_write_kwargs
 
 def now():
     return datetime.datetime.now()

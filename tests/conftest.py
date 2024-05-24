@@ -19,14 +19,14 @@ from pyproj.crs import CRS
 #project
 from parameters import src_dir
 from tests._params import epsg, bounds
-from hp._params import temp_dir
+from fdsc.hp._params import temp_dir
 #from fdsc.base import nicknames_d
 
 #helpers
 #===============================================================================
 # from hp.tests.tools.rasters import get_rlay_fp
 # from hp.tests.conftest import init_kwargs
-from hp.logr import get_new_console_logger, logging
+from fdsc.hp.logr import get_new_console_logger, logging
 # from hp.rio import write_array, write_array2
 # from hp.riom import assert_masked_ar
 #===============================================================================
@@ -66,34 +66,37 @@ par_algoMethodKwargs = ('method, kwargs', [(k,v) for k,v in par_method_kwargs.it
 crs_default = CRS.from_user_input(epsg)
 bbox_default = sgeo.box(*bounds)
 
-proj_lib = dict()
-proj_lib['fred01'] = {
-    # test raw data
-    'wse2_rlay_fp':os.path.join(src_dir, r'tests/data/fred01/testr_test00_0806_fwse.tif'),
-    'aoi_fp':os.path.join(src_dir, r'tests/data/fred01/aoi_T01.geojson'),
-    'crs':CRS.from_user_input(3979),
-    
-    # p1_downscale_wetPartials
-    'wse1_rlay2_fp':os.path.join(src_dir, r'tests/data/fred01/wse1_ar2.tif'),
-    
-    # p2_dp_costGrowSimple._filter_dem_violators
-    'wse1_rlay3_fp':os.path.join(src_dir, r'tests/data/fred01/wse1_ar3.tif'),
-        
-    'dem1_rlay_fp':os.path.join(src_dir, r'tests\data\fred01\dem.tif'),
-    
-    # validation data
-    'wse1_rlayV_fp':os.path.join(src_dir, r'tests/data/fred01/vali/wse1_arV.tif'),
-    'sample_pts_fp':os.path.join(src_dir, r'tests/data/fred01/vali/sample_pts_0109.geojson'),
-    'samp_gdf_fp':os.path.join(src_dir, r'tests/data/fred01/vali/samps_gdf_0109.pkl'),
-    'inun_vlay_fp':os.path.join(src_dir, r'tests/data/fred01/vali/inun_vali1.geojson'),
-    'hwm_pts_fp':os.path.join(src_dir, r'tests/data/fred01/vali/hwm_pts_0303.geojson'),
-    
-    # post data
-    'valiM_fp_d':{
-        'cgs':os.path.join(src_dir, r'tests/data/fred01/post/cgs_0109_valiMetrics.pkl'),
-        'noDP':os.path.join(src_dir, r'tests/data/fred01/post/none_0109_valiMetrics.pkl'),
-        },
-    }
+#not sure what happen to the fred01 data
+#===============================================================================
+# proj_lib = dict()
+# proj_lib['fred01'] = {
+#     # test raw data
+#     'wse2_rlay_fp':os.path.join(src_dir, r'tests/data/fred01/testr_test00_0806_fwse.tif'),
+#     'aoi_fp':os.path.join(src_dir, r'tests/data/fred01/aoi_T01.geojson'),
+#     'crs':CRS.from_user_input(3979),
+#     
+#     # p1_downscale_wetPartials
+#     'wse1_rlay2_fp':os.path.join(src_dir, r'tests/data/fred01/wse1_ar2.tif'),
+#     
+#     # p2_dp_costGrowSimple._filter_dem_violators
+#     'wse1_rlay3_fp':os.path.join(src_dir, r'tests/data/fred01/wse1_ar3.tif'),
+#         
+#     'dem1_rlay_fp':os.path.join(src_dir, r'tests\data\fred01\dem.tif'),
+#     
+#     # validation data
+#     'wse1_rlayV_fp':os.path.join(src_dir, r'tests/data/fred01/vali/wse1_arV.tif'),
+#     'sample_pts_fp':os.path.join(src_dir, r'tests/data/fred01/vali/sample_pts_0109.geojson'),
+#     'samp_gdf_fp':os.path.join(src_dir, r'tests/data/fred01/vali/samps_gdf_0109.pkl'),
+#     'inun_vlay_fp':os.path.join(src_dir, r'tests/data/fred01/vali/inun_vali1.geojson'),
+#     'hwm_pts_fp':os.path.join(src_dir, r'tests/data/fred01/vali/hwm_pts_0303.geojson'),
+#     
+#     # post data
+#     'valiM_fp_d':{
+#         'cgs':os.path.join(src_dir, r'tests/data/fred01/post/cgs_0109_valiMetrics.pkl'),
+#         'noDP':os.path.join(src_dir, r'tests/data/fred01/post/none_0109_valiMetrics.pkl'),
+#         },
+#     }
+#===============================================================================
 
 #===============================================================================
 # helpers-----

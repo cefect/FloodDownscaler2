@@ -15,16 +15,16 @@ from rasterio.enums import Resampling, Compression
 
 import shapely.geometry as sgeo
 
-from hp.basic import dstr, now
-from hp.oop import Session
-from hp.rio import (
+from fdsc.hp.basic import dstr, now
+from fdsc.hp.oop import Session
+from fdsc.hp.rio import (
     assert_extent_equal,  RioSession,get_profile,
     write_array, assert_spatial_equal, write_clip,get_meta, get_bbox,
     write_resample, get_meta
     )
-from hp.pd import view
+from fdsc.hp.pd import view
  
-from hp.hyd import (
+from fdsc.hp.hyd import (
     HydTypes
     )
 
@@ -175,16 +175,26 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         Paramerters
         -------------
         wse2_fp: str
-            filepath to WSE raster layer at low-resolution (to be downscaled)
+            filepath to WSE raster layer at coarse resolution (to be downscaled)
             
         dem1_fp: str
-            filepath to DEM raster layer at high-resolution (used to infer downscaled WSE)
+            filepath to DEM raster layer at fine resolution (used to infer downscaled WSE)
             
         method: str
             downsccaling method to apply
             
         debug: bool, None
             optional flag to disable debugging on just this method (nice for run_dsc_multi)
+            
+        
+        Returns
+        -----------
+        str
+            filepath to fine WSE GeoTiff
+        
+        dict
+            metadata
+        
             
         Note
         -------
@@ -218,8 +228,8 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         #assert not os.path.exists(ofp), f'output exists\n    {ofp}'
         if debug:
             assert_extent_equal(wse2_fp, dem1_fp)
-            HydTypes('DEM').assert_fp(dem1_fp)
-            HydTypes('WSE').assert_fp(wse2_fp)
+            HydTypes('DEM').assert_fp(dem1_fp, msg=f'expectation check for\n    {dem1_fp}')
+            HydTypes('WSE').assert_fp(wse2_fp, msg=f'expectation check for\n    {wse2_fp}')
  
  
         meta_lib['wse_raw'] = get_meta(wse2_fp)
@@ -242,13 +252,13 @@ class Dsc_Session_skinny(CostGrow, BufferGrowLoop, Schuman14,BasicDSC,WBT_worker
         #=======================================================================
         f = self.run_dsc_handle_d[method]
         
-        wse1_fp, d = f(wse_fp=wse2_fp, dem_fp=dem1_fp, **rkwargs, **skwargs)
-        #=======================================================================
-        # try:
-        #     wse1_fp, meta_lib = f(wse_fp=wse2_fp, dem_fp=dem1_fp, **skwargs)
-        # except Exception as e:
-        #     raise IOError(f'failed to execute algo \'{method}\' method \'{f.__name__}\' w/ \n    {e}')
-        #=======================================================================
+        
+        try:
+            wse1_fp, d = f(wse_fp=wse2_fp, dem_fp=dem1_fp, **rkwargs, **skwargs)
+        except Exception as e:
+            raise IOError(f'failed to execute algo \'{method}\' method \'{f.__name__}\' w/ \n    {e}')
+        
+        
         meta_lib.update(d)
  
         #=======================================================================

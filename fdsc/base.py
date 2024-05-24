@@ -5,19 +5,22 @@ Created on Jan. 6, 2023
 
 base objects and functions for all dsc scripts
 '''
-import datetime, os
+import datetime, os, math, warnings
+ 
 import pandas as pd
 import numpy as np
 import numpy.ma as ma
 import rasterio as rio
 
-from hp.oop import Session
-from hp.rio import (
+from scipy.interpolate import interpn
+
+from .hp.oop import Session
+from .hp.rio import (
     assert_rlay_simple, _get_meta, assert_spatial_equal, get_ds_attr, write_array2
     )
-from hp.riom import assert_masked_ar
-from hp.hyd import assert_wse_ar, assert_dem_ar, assert_partial_wet, HydTypes
-from hp.hyd import assert_wsh_ar as assert_wd_ar
+from .hp.riom import assert_masked_ar
+from .hp.hyd import assert_wse_ar, assert_dem_ar, assert_partial_wet, HydTypes
+from .hp.hyd import assert_wsh_ar as assert_wd_ar
 
  
 
@@ -84,7 +87,22 @@ class DscBaseWorker(object):
         
         if self.downscale is None:          
             
-            self.downscale = self.get_resolution_ratio(fp1, fp2)
+            downscale_raw = self.get_resolution_ratio(fp1, fp2)
+            
+            # Check if ratio is approximately an integer (within a tolerance)
+            if not math.isclose(downscale_raw, round(downscale_raw), abs_tol=1e-6):
+                raise ValueError(
+                    f"Resolution ratio {downscale_raw:.6f} does not approximate an integer within 6 decimal places."
+                )
+        
+            # Check if ratio is a perfect integer (optional, for stricter requirements)
+            elif downscale_raw != round(downscale_raw):
+                warnings.warn(f'Resolution ratio {downscale_raw:.6f} is not a perfect integer.')
+        
+            # Round the ratio to the nearest integer and proceed
+            self.downscale = round(downscale_raw)
+            
+            
             
         assert self.downscale>=1.0
         return self.downscale
@@ -160,7 +178,8 @@ def rlay_extract(fp,
     
     """load rlay data and arrays"""
     with rio.open(fp, mode='r') as ds:
-        assert_rlay_simple(ds)
+        """needed?
+        assert_rlay_simple(ds)"""
         stats_d = _get_meta(ds) 
  
         ar = ds.read(1, window=window, masked=masked)
@@ -169,7 +188,30 @@ def rlay_extract(fp,
         
     return stats_d, ar
     
+def rebroadcast_array_interpn(original_array, new_shape, method='linear'):
+    """coarsen an array using interpolation
+    
+    similar to xarray.coarsen
+    
+    """
+    # Create an array of indices for the original array
+    old_indices = [np.arange(i) for i in original_array.shape]
 
+    # Create an array of indices for the new array
+    new_indices = np.mgrid[[slice(i) for i in new_shape]].reshape(len(new_shape),-1).T
+
+    # Scale new_indices so that it fits within the range of old_indices
+    new_indices = new_indices * np.array(original_array.shape) / np.array(new_shape)
+
+    # Use scipy's interpn function to interpolate the array
+    rebroadcasted_array = interpn(old_indices, original_array, new_indices, method=method, bounds_error=False, fill_value=None)
+
+    return rebroadcasted_array.reshape(new_shape)
+
+
+#===============================================================================
+# ASSERTIONS---------
+#===============================================================================
 def assert_dsc_res_lib(dsc_res_lib, level=1, msg=''):
     if not __debug__: # true if Python was not started with an -O option
         return

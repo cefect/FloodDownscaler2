@@ -2,7 +2,7 @@
 
 Tools for downscaling/disaggregating flood hazard grids
 
-![alt text](./icon/logo_flood_rescale_20230205_600dpi.png)
+![alt text](./img/logo_flood_rescale_20230205_600dpi.png)
 
  
 
@@ -19,6 +19,22 @@ from fdsc.main import downscale
 downscale(<path_to_DEM>, <path_to_WSE>)
 >>> <path_to_WSE1>, {metadata}
 ```
+
+### Supported downscaling methods
+The following downscaling algos have been implemented. These are typically specified via the `method` key:
+#### CostGrow
+employs four phases shown below: 1) grid resampling; 2) least-cost mapping; 3) filtering high-and-dry sub-grid cells; and finally 4) an isolated-cell filter.
+![alt text](./img/costGrow_steps.png)
+#### Basic
+simple grid resampling as in **BasicBilinear** shown below
+![alt text](./img/basic_steps.png)
+
+#### SimpleFilter
+As in Basic, with an additional step to filter high-and-dry cells (see **SimpleFilter**) above
+
+#### Schumann14
+Method from Schumann et al. (2014) with the three steps shown below
+![alt text](./img/schu14_steps.png)
 
 ## Related projects
 [FloodDownscaler](https://github.com/cefect/FloodDownscaler): original repo for HESS publication work
