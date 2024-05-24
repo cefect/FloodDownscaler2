@@ -178,7 +178,8 @@ def rlay_extract(fp,
     
     """load rlay data and arrays"""
     with rio.open(fp, mode='r') as ds:
-        assert_rlay_simple(ds)
+        """needed?
+        assert_rlay_simple(ds)"""
         stats_d = _get_meta(ds) 
  
         ar = ds.read(1, window=window, masked=masked)

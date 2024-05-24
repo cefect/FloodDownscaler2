@@ -29,7 +29,7 @@ from fdsc.main import downscale
 from fdsc.hp.rasters import get_rlay_fp
 
 from tests.conftest import (
-     proj_lib,get_aoi_fp, 
+     get_aoi_fp, 
     par_method_kwargs,temp_dir,
     par_algoMethodKwargs,
  
@@ -151,13 +151,13 @@ tdir = lambda x: os.path.join(os.path.dirname(test_data_dir), 'jordan', x)
 
 @pytest.mark.dev
 @pytest.mark.parametrize('dem_fp, wse_fp', [
-    #(toy_d['dem1'], toy_d['wse2']),
-    #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['toy_d['wse2']'])
-    (tdir('dem_fine_0522.tif'), tdir('wse_coarse_0522.tif')),
+    (toy_d['dem1'], toy_d['wse2']),
+    #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['wse2_rlay_fp']),
+    (tdir('dem_fine_0522.tif'), tdir('wse_coarse_0522.tif')), #failing on schumann
     ])
 @pytest.mark.parametrize(*par_algoMethodKwargs)
 def test_downscale(dem_fp, wse_fp, method, kwargs, tmp_path):
-    assert os.path.exists(dem_fp)
+    assert os.path.exists(dem_fp), dem_fp
     downscale(dem_fp, wse_fp, method=method, out_dir=tmp_path, **kwargs)
  
     
