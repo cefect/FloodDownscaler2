@@ -26,10 +26,10 @@ from fdsc.control import Dsc_Session as Session
 from fdsc.main import downscale
  
 #from fdsc.bufferLoop import ar_buffer
-from hp.rasters import get_rlay_fp
+from fdsc.hp.rasters import get_rlay_fp
 
 from tests.conftest import (
-     proj_lib,get_aoi_fp, 
+     get_aoi_fp, 
     par_method_kwargs,temp_dir,
     par_algoMethodKwargs,
  
@@ -94,14 +94,15 @@ def test_p1(dem_fp, wse_fp, wrkr):
 
 tdir = lambda x: os.path.join(test_data_dir, 'test_04_isolated', x) 
 
-@pytest.mark.dev
+
 @pytest.mark.parametrize('method, clump_cnt, wse_raw_fp, wse_fp',
                          [
-                             ('area', 1, None, toy_d['wse13']),
-                             ('area', 2, None, toy_d['wse13']),
-                             ('pixel', None, toy_d['wse2'], toy_d['wse13']),
-                             ('pixel', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
-                             ('pixel_polygon', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
+                            ('area', 1, None, toy_d['wse13']),
+                            ('area', 2, None, toy_d['wse13']),
+                            ('pixel', None, toy_d['wse2'], toy_d['wse13']),
+                            ('pixel', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
+                            ('pixel_polygon', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
+                             ('skimage_label', None, tdir('wse_r200_0121.tif'),tdir('wse_r005_0121.tif')),
                              ]
                          )
 def test_04_isolated(wse_fp, wrkr, method, clump_cnt, wse_raw_fp):
@@ -140,18 +141,23 @@ def test_schu14(dem_fp, wse_fp, wrkr, backend):
     ])
 @pytest.mark.parametrize('method_pars', [par_method_kwargs])
 def test_run_dsc_multi(dem_fp, wse_fp, method_pars, wrkr):
-    """one of the metadata containers is out of compliance on CostGrow?"""
+    """
+    FAILING: one of the metadata containers is out of compliance on CostGrow?
+    """
     wrkr.run_dsc_multi(dem_fp, wse_fp, method_pars=method_pars)
     
     
+tdir = lambda x: os.path.join(os.path.dirname(test_data_dir), 'jordan', x) 
 
-
+@pytest.mark.dev
 @pytest.mark.parametrize('dem_fp, wse_fp', [
     (toy_d['dem1'], toy_d['wse2']),
-    #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['toy_d['wse2']'])
+    #(proj_lib['fred01']['dem1_rlay_fp'], proj_lib['fred01']['wse2_rlay_fp']),
+    (tdir('dem_fine_0522.tif'), tdir('wse_coarse_0522.tif')), #failing on schumann
     ])
 @pytest.mark.parametrize(*par_algoMethodKwargs)
 def test_downscale(dem_fp, wse_fp, method, kwargs, tmp_path):
+    assert os.path.exists(dem_fp), dem_fp
     downscale(dem_fp, wse_fp, method=method, out_dir=tmp_path, **kwargs)
  
     

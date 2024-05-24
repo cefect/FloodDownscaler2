@@ -6,9 +6,9 @@ Methods for object-oriented-programming
 import os, sys, datetime, gc, copy, pickle, pprint, logging
 import logging.config
 #from qgis.core import QgsMapLayer
-from hp.dirz import delete_dir
-from hp.basic import today_str, dstr
-from hp.pd import view
+from .dirz import delete_dir
+from .basic import today_str, dstr
+from .pd import view
  
 from parameters import src_name
  
@@ -330,7 +330,7 @@ class LogSession(Basic):
         # duplicate logger
         #=======================================================================
         if logfile_duplicate:
-            from hp.logr import get_new_file_logger
+            from .logr import get_new_file_logger
             get_new_file_logger(
                 fp=os.path.join(self.out_dir, '%s_%s.log'%(
                     self.fancy_name, datetime.datetime.today().strftime('%m%d.%H.%M'))),
@@ -559,7 +559,7 @@ class Session(LogSession): #analysis with flexible loading of intermediate resul
         
         
         """
-        log, tmp_dir, out_dir, ofp, resname = self._func_setup('meta', subdir=False,ext='.xls',  **kwargs)
+        log, tmp_dir, out_dir, ofp, resname = self._func_setup('meta', subdir=False,ext='.xlsx',  **kwargs)
         #from hp.pd import nested_dict_to_dx
         
         #convert to simple {tabn:dataframe}\
@@ -574,7 +574,7 @@ class Session(LogSession): #analysis with flexible loading of intermediate resul
         
         
         #write dict of dicts to frame
-        with pd.ExcelWriter(ofp, engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(ofp, engine='openpyxl') as writer:
             for tabnm, dx in res_d.items():                
                 dx.to_excel(writer, sheet_name=tabnm, index=True, header=True)
         

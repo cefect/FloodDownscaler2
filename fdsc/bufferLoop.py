@@ -12,8 +12,8 @@ from rasterio import shutil as rshutil
 
 
 
-from hp.basic import now
-from hp.rio import (
+from .hp.basic import now
+from .hp.rio import (
     assert_rlay_simple, 
     write_array, 
 
@@ -102,7 +102,8 @@ class BufferGrowLoop(WetPartials):
         assert_dem_ar(dem_ar)
         
         with rio.open(wse1_fp, mode='r') as ds:
-            assert_rlay_simple(ds)
+            """needed?
+            assert_rlay_simple(ds)"""
             wse1_ar = ds.read(1, masked=True)
             prof = ds.profile
        

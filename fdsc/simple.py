@@ -15,14 +15,14 @@ import rasterio as rio
 from rasterio import shutil as rshutil
 
 
-from hp.basic import now
-from hp.gdal import getNoDataCount
-from hp.rio import (
+from .hp.basic import now
+from .hp.gdal import getNoDataCount
+from .hp.rio import (
     assert_extent_equal,  _get_meta, assert_rlay_simple, RioSession,
     write_array, assert_spatial_equal, get_write_kwargs,  load_array, write_clip,
     rlay_apply,rlay_ar_apply,write_resample, Resampling, get_ds_attr, get_stats2
     )
-from hp.riom import write_extract_mask, write_array_mask
+from .hp.riom import write_extract_mask, write_array_mask
  
 
 from fdsc.base import (
