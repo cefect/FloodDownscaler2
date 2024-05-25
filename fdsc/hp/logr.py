@@ -46,7 +46,7 @@ def get_new_file_logger(
     return logger
     
     
-def get_new_console_logger(
+def get_log_stream(
         logger_name='log',
         level=logging.DEBUG,
  
@@ -69,7 +69,7 @@ def get_new_console_logger(
     formatter = logging.Formatter('%(levelname)s.%(name)s:  %(message)s')        
     handler = logging.StreamHandler(
         stream=sys.stdout, #send to stdout (supports colors)
-        ) #Create a file handler at the passed filename 
+        )  
     handler.setFormatter(formatter) #attach teh formater object
     handler.setLevel(level) #set the level of the handler
     

@@ -4,55 +4,103 @@ Created on Oct. 24, 2023
 @author: cefect
 
 CLI caller for running downscalers
-'''
-import os, argparse
-from fdsc.control import Dsc_Session
 
-def downscale(
-    dem_fp,
-    wse_fp,            
+
+2024-05-25:
+    re-write to xarray
+    xarray has limited support for masks/nulls
+'''
+
+#===============================================================================
+# imports----------
+#===============================================================================
+import os, argparse, logging
+import rioxarray
+
+from parameters import today_str
+from .hp.logr import get_new_file_logger, get_log_stream
+from .assertions import *
+
+
+#===============================================================================
+# HELPERS--------
+#===============================================================================
+def _geoTiff_to_xr(fp, nodata=-9999): 
+    return rioxarray.open_rasterio(fp,masked=True).squeeze().rio.write_nodata(nodata)
+
+#===============================================================================
+# RUNNERS-----------
+#===============================================================================
+def downscale_wse_raster(
+    dem_fine_fp,
+    wse_coarse_fp,            
     
     method='CostGrow', 
+    params=None,
     write_meta=True,
     
     out_dir=None,
     logger=None,
-    debug=None,
+ 
     
     **kwargs):
-        """dowscale a coarse WSE grid
+    """dowscale a coarse WSE grid using a fine DEM from raster files
+    
+    Pars
+    ----------
+    wse_coarse_fp: str
+        filepath to WSE raster layer at coarse-resolution (to be downscaled)
         
-        Pars
-        ----------
-        wse_fp: str
-            filepath to WSE raster layer at low-resolution (to be downscaled)
-            
-        dem_fp: str
-            filepath to DEM raster layer at high-resolution (used to infer downscaled WSE)
-            
-        method: str
-            downsccaling method to apply
-                CostGrow
-                Basic
-                SimpleFilter
-                
-            
-        kwargs: dict
-            key word arguments to pass to downscaling method
-            
-        write_meta: bool
-            flag to write metadata"""
-            
-            
-        if out_dir is None:
-            from definitions import wrk_dir
-            out_dir= wrk_dir
-            
-        with Dsc_Session(run_name='fdsc2', relative=True, out_dir=out_dir, logger=logger) as ses:
+    dem_fine_fp: str
+        filepath to DEM raster layer at fine-resolution (used to infer downscaled WSE)
+        
+    method: str
+        downsccaling method to apply
+            CostGrow                
+        
+    params: dict
+        key word arguments to pass to downscaling method
+        
+    write_meta: bool
+        flag to write metadata
+        
+        
+    """
+        
+    #=======================================================================
+    # defaults
+    #=======================================================================
+    if out_dir is None:
+        from definitions import wrk_dir
+        out_dir= wrk_dir
+        
+    if logger is None:
+        logger = get_new_file_logger(
+                    fp = os.path.join(out_dir, f'downscale_wse_raster_{today_str}.log'),
+                    level = logging.DEBUG,
+                    logger=get_log_stream(level = logging.DEBUG)
+                    )
+        
+    #===========================================================================
+    # load to Xarray
+    #===========================================================================
+    dem_fine_xr = _geoTiff_to_xr(dem_fine_fp)
+    wse_coarse_xr = _geoTiff_to_xr(wse_coarse_fp)
+    
+    #===========================================================================
+    # execute
+    #===========================================================================
+    if method=='CostGrow':
+        from fdsc.alg.costGrow import downscale_costGrow_xr as func
+        
+    else:
+        raise KeyError(method)
+    
+    
+    wse_fine_xr, meta_d = func(dem_fine_xr, wse_coarse_xr,logger=logger,write_meta=write_meta, **params)
+    
+    
  
-            return ses.run_dsc(dem_fp, wse_fp, method=method, write_meta=write_meta,
-                        rkwargs=kwargs, debug=debug,
-                        )
             
  
 
