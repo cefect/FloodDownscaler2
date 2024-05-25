@@ -18,7 +18,7 @@ dependencies:
   #- xarray=2022.12.*
   #- dask
   #- numbagg
-  #- rioxarray=0.13.*
+  - rioxarray
   - xlsxwriter=3.0.*
   - georasters=0.5.* #alternate backend for schu14's pixels_to_points
   - scikit-image
