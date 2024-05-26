@@ -22,9 +22,9 @@ from fdsc.hp.xr import xr_to_GeoTiff, dataarray_from_masked
     #'case_jordan',
     'case_toy1',
     ])
-def test_cost_distance_fill(wse_fine_xr):
+def test_distance_fill_cost_wbt(wse_fine_xr):
  
-    from fdsc.alg.costGrow import _distance_fill_cost as func     
+    from fdsc.alg.costGrow import _distance_fill_cost_wbt as func     
     func(wse_fine_xr.to_masked_array(), xr.ones_like(wse_fine_xr).data)
 
 
@@ -74,7 +74,7 @@ def test_distance_fill_cost_terrain(wse_fine_xr,dem_fine_xr, wse_coarse_xr,
                                     tmpdir, logger, cd_backend):
  
     from fdsc.alg.costGrow import _distance_fill_cost_terrain as func
-    result = func(wse_fine_xr.to_masked_array(), dem_fine_xr, wse_coarse_xr, 
+    result = func(wse_fine_xr, dem_fine_xr, wse_coarse_xr, 
                   log=logger, cd_backend=cd_backend, out_dir=tmpdir)
     
     print(f'finished w/ {result.shape}')
