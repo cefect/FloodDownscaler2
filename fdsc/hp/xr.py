@@ -7,6 +7,8 @@ import os
 import xarray as xr
 import numpy as np
 import numpy.ma as ma
+from rasterio.warp import transform
+
 from fdsc.assertions import assert_xr_geoTiff
 
 def xr_to_GeoTiff(da, raster_fp, log=None, compress='LZW'): 
@@ -100,3 +102,65 @@ def dataarray_from_masked(masked_array, target_dataarray):
     # Ensure rio attributes are copied over
  
     return new_dataarray.rio.write_crs(target_dataarray.rio.crs).rio.write_nodata(nodata)
+
+
+
+def approximate_resolution_meters(xds):
+    """Approximates the resolution of an EPSG:4326 raster in meters.
+
+    Args:
+        xds: The rioxarray DataArray representing the raster.
+
+    Returns:
+        A tuple containing the approximate x and y resolution in meters.
+    """
+    
+    # Earth's radius in meters
+    EARTH_RADIUS = 6371000
+
+    # Get latitude/longitude resolution (in degrees)
+    x_res_degrees, y_res_degrees = xds.rio.resolution()
+    
+    if xds.rio.crs.linear_units == 'metre':
+        return x_res_degrees, y_res_degrees
+        
+    if not xds.rio.crs.is_geographic:
+        raise NotImplementedError(f'expect a geographic crs or a projected one in meters')
+        
+
+    # Get raster bounds
+    bounds = xds.rio.bounds()
+    min_lat, max_lat = bounds[1], bounds[3]
+    avg_lat = (min_lat + max_lat) / 2
+
+    # Convert latitude resolution to meters
+    y_res_meters = y_res_degrees * (2 * np.pi * EARTH_RADIUS) / 360
+
+    # Convert longitude resolution to meters (depends on latitude)
+    x_res_meters = x_res_degrees * (2 * np.pi * EARTH_RADIUS * np.cos(np.radians(avg_lat))) / 360
+
+    return x_res_meters, y_res_meters
+
+
+def get_center_latlon(xds):
+    """Calculates the center latitude and longitude of a rioxarray DataArray.
+
+    Args:
+        xds: The rioxarray DataArray representing the raster.
+
+    Returns:
+        A tuple containing the latitude and longitude of the center in degrees.
+    """
+
+    bounds = xds.rio.bounds()
+    center_x = (bounds[0] + bounds[2]) / 2
+    center_y = (bounds[1] + bounds[3]) / 2
+
+    # Check if CRS is already geographic (lat/lon)
+    if xds.rio.crs.is_geographic:
+        return center_y, center_x
+
+    # Reproject center coordinates to WGS84 (EPSG:4326) if necessary
+    dst_crs = "EPSG:4326"
+    lon, lat = transform(xds.rio.crs, dst_crs, [center_x], [center_y])
+    return lat[0], lon[0]
