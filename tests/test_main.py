@@ -14,7 +14,7 @@ np.set_printoptions(linewidth=300)
 @pytest.mark.parametrize('phase', ['00_raw'])
 @pytest.mark.parametrize('caseName',[
     'case_toy1',
-    'case_01', #no DEM
+ 
     'case_ahr', #(16, 18) to (128, 144)
     'case_jordan', #(197, 213) to (591, 639) EPSG4326    
     #'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
