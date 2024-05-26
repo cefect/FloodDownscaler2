@@ -327,8 +327,11 @@ def _distance_fill(mar,
     return filled_ar
 
 
-
-
+ 
+    
+#===============================================================================
+# RUNNERS------
+#===============================================================================
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 distance_fill='neutral',
@@ -360,7 +363,8 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     
     meta_d=dict()
     nodata = dem_fine_xr.rio.nodata
-    dem_mask = dem_fine_xr.to_masked_array().mask
+    dem_mar = dem_fine_xr.to_masked_array()
+    dem_mask = dem_mar.mask
     #===========================================================================
     # pre-chescks
     #===========================================================================
@@ -398,7 +402,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
             meta_d[f'{phaseName}_{layerName}'] = xr_to_GeoTiff(da, ofp+'.tif', log=log, compress=None) 
             
             #write pickle (for unit tests) 
-            _write_to_pick(da, os.path.join(out_dir, phaseName, layerName+'.pkl'))            
+            #_write_to_pick(da, os.path.join(out_dir, phaseName, layerName+'.pkl'))            
             #wrap
             
             
@@ -436,9 +440,15 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
              'coarse_shape':wse_coarse_xr.shape,
              'start':datetime.datetime.now(),
              'dem_mask_cnt':dem_mask.sum(),
-             'wse_wet_cnt':np.invert(wse_mask).sum(),
+             'wse_coarse_wet_cnt':np.invert(wse_mask).sum(),
              'debug':debug,
              })
+        
+        wet_d = dict()
+        def upd_wet(da, k):
+            wet_d[k] = da.notnull().sum().item()
+            
+        
         
     log.info(f'passed all checks and downscale={downscale}\n    {meta_d}')
     
@@ -454,7 +464,8 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     wse_fine_xr1.attrs['layerName']='wse_fine'
     
     if write_meta:
-        meta_d[f'{phaseName}_wseFine_wetCnt']=np.invert(wse_fine_xr1.to_masked_array().mask).sum()
+        upd_wet(wse_fine_xr1, phaseName)
+         
         
     if debug:
         assert_wse_xr(wse_fine_xr1)
@@ -470,7 +481,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     log.debug(phaseName)
     
     wse_mar = wse_fine_xr1.to_masked_array()
-    dem_mar = dem_fine_xr.to_masked_array()
+    
     
     
     
@@ -487,8 +498,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     # post
     #===========================================================================
     if write_meta:
-        meta_d['wse_fine_2wp_wet_cnt']=np.invert(wse_fine_xr2.to_masked_array().mask).sum()
-        
+        upd_wet(wse_fine_xr2, phaseName)
         
     if debug:
         if not wse_mar.mask.sum()<=wse_mar2.mask.sum():
@@ -542,8 +552,72 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
             raise AssertionError(f'dry-cell failed to decrease during {phaseName}')        
  
         to_gtiff(wse_fine_xr3, phaseName)
+        
+    if write_meta:
+        meta_d['distance_fill'] = distance_fill
+        upd_wet(wse_fine_xr3, phaseName)
+        
+    #===========================================================================
+    # 04  isolated----------
+    #===========================================================================
+    phaseName='04_isol'
+    log.debug(f'{phaseName}  ')
     
-    return None, meta_d
+    wse_mar = wse_fine_xr3.to_masked_array()
+    inun_fine_ar = np.where(wse_mar.mask, 0.0, 1.0) #0:dry, 1:wet
+    
+    # produce integer labels for each connected component
+    #0-valued pixels are considered as background pixels
+    labels, nlabels = skimage.measure.label(
+        inun_fine_ar, 
+        connectivity=1, 
+        return_num=True)
+    
+    log.debug(f'identified {nlabels} regions')
+    #===================================================================
+    # #identify those labels we want to keep
+    #===================================================================
+    #wet partial inundation
+    inun_wp_bar = np.invert(wse_fine_xr2.to_masked_array().mask) #True=wet
+ 
+    #those wet in 02WP
+    connected_labels = np.unique(labels[inun_wp_bar])
+    log.debug(f'{len(connected_labels)}/{nlabels} intersect w/ 02wp')
+    
+    #apply mask
+    iso_bar = np.isin(labels, connected_labels)
+
+    wse_fine_xr4 = wse_fine_xr3.where(iso_bar)
+    
+    #===========================================================================
+    # post
+    #===========================================================================
+    if debug:
+        if not wse_fine_xr4.isnull().sum()>=wse_fine_xr3.isnull().sum():
+            raise AssertionError(f'dry-cells failed to decrease during {phaseName}')
+        
+        assert np.all(
+            wse_fine_xr4.isnull().data.ravel()[dem_fine_xr.isnull().data.ravel()]), 'DEM nulls not set on result'
+        
+        #check all resampled wets are still wet
+        if not np.logical_and(wse_fine_xr4.notnull(), wse_fine_xr2.notnull()).sum()==  wse_fine_xr2.notnull().sum():
+            raise AssertionError(f'lost some wet cells from resample')      
+ 
+        to_gtiff(wse_fine_xr4, phaseName)
+        
+    if write_meta:
+        meta_d['isolated_region_raw_cnt'] = nlabels
+        meta_d['isolated_region_sel_cnt'] = len(connected_labels)
+        upd_wet(wse_fine_xr4, phaseName)
+        
+    #===========================================================================
+    # 05 WRAP------
+    #===========================================================================
+    #append wet counts to meta
+    meta_d.update({f'wetCnt_{k}':v for k,v in wet_d.items()})
+    
+    log.debug(f'finished w/ {meta_d}')
+    return wse_fine_xr4, meta_d
  
  
     
