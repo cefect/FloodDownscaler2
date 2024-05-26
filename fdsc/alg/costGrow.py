@@ -18,7 +18,9 @@ import skimage.graph
 
 from parameters import today_str
 from fdsc.hp.logr import get_new_file_logger, get_log_stream
-from fdsc.hp.xr import resample_match_xr, dataarray_from_masked, xr_to_GeoTiff
+from fdsc.hp.xr import (
+    resample_match_xr, dataarray_from_masked, xr_to_GeoTiff, approximate_resolution_meters
+    )
 from fdsc.assertions import *
 
 from .coms import shape_ratio
@@ -103,19 +105,7 @@ def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=Non
     delta_xr = dem_fine_xr - wse_filled_xr1
     
     #normalize cost surface
-    """
-    
-    from zero to one?
-    
-        no... want more separation between positive/negative
-    
-    negative:free; positives:some water surface slope tuning?
-    
-        xr.where(delta_xr>0, 0.0, delta_xr)
-    
-        should read more about what the cost surface is
-    
-    """
+ 
     log.debug(f'computing cost surface')
     cost_xr = xr.where(delta_xr < 0, 0.0, delta_xr).fillna(999).round(1)
     cost_xr.rio.write_crs(dem_fine_xr.rio.crs, inplace=True) #not sure where this got lost
@@ -327,14 +317,53 @@ def _distance_fill(mar,
     return filled_ar
 
 
- 
-    
+import geopandas as gpd
+from shapely.geometry import Point, LineString
+import pyproj
+
+def meters_to_latlon(distance_meters, latitude, longitude, crs="EPSG:4326"):
+    """Converts a distance in meters to a latitude and longitude difference at a given location.
+
+    Args:
+        distance_meters: The distance in meters.
+        latitude: The latitude of the starting point (in degrees).
+        longitude: The longitude of the starting point (in degrees).
+        crs: The coordinate reference system of the input coordinates (default WGS84).
+
+    Returns:
+        A tuple containing the latitude difference and longitude difference in degrees.
+    """
+
+    # Create a GeoDataFrame with the starting point
+    point = Point(longitude, latitude)
+    gdf = gpd.GeoDataFrame(geometry=[point], crs=crs)
+
+    # Define a custom Azimuthal Equidistant projection centered at the point
+    aeqd_crs = pyproj.CRS.from_proj4(
+        f"+proj=aeqd +lat_0={latitude} +lon_0={longitude} +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs"
+    )
+
+    # Project to AEQD and buffer
+    gdf_aeqd = gdf.to_crs(aeqd_crs)
+    gdf_aeqd["geometry"] = gdf_aeqd.buffer(distance_meters)
+
+    # Project back to WGS84 and get the new coordinates
+    gdf_wgs84 = gdf_aeqd.to_crs(crs)
+    new_coords = gdf_wgs84.geometry[0].centroid  
+
+    # Calculate the differences
+    lat_diff = new_coords.y - latitude
+    lon_diff = new_coords.x - longitude
+
+    return lat_diff, lon_diff
 #===============================================================================
 # RUNNERS------
 #===============================================================================
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 distance_fill='neutral',
+                decay_frac=0.001,
+                dp_coarse_pixel_max=10,
                           
                  logger=None,
                  write_meta=True,
@@ -346,11 +375,23 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     
     params
     --------
-    distance_fill: str
+    distance_fill: str, default 'neutral'
         type of cost surface to use
             neutral: nn flat surface extrapolation
             terrain_penalty: cost distance extrapolation with terrain penalty
             
+    
+    decay_frac: float, default 0.001 m/m
+        value (in meters) multiiplied  by distance and pixel size to obtain the decay grid
+        decay grid is subtracted from Dry-Partial WSE
+        equivalent to the water slope applied to the Dry-Partial growth
+        pass 0.0 or None to skip applying decay
+        
+    dp_coarse_pixel_max: int, default 10.0
+        maximum number of coarse pixels to allow dry-partial growth
+        pass None to skip applying this threshold (unbounded growth)
+         
+        
             
     out_dir: str, optional
         output directory for debugging intermediaries
@@ -515,13 +556,34 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     #===========================================================================
     phaseName='03_dp'
     log.debug(f'{phaseName} w/ distance_fill={distance_fill}')
+    
+    
+    #needed by filter ops
+    distance_ar = scipy.ndimage.distance_transform_cdt(
+        wse_fine_xr2.isnull().data.astype(int),return_indices=False,return_distances=True)
+    
+    #===========================================================================
+    # 03.1 growth threshold
+    #===========================================================================
+    if not dp_coarse_pixel_max is None:
+        #True=within region of interest
+        grow_thresh_bar = distance_ar/downscale<dp_coarse_pixel_max
+        log.debug(f'w/ dp_coarse_pixel_max={dp_coarse_pixel_max} masked {np.invert(grow_thresh_bar).sum()/grow_thresh_bar.size:.4f} of pixels')
+    else:
+        grow_thresh_bar = np.full(distance_ar.shape, True)
+        
+        
  
     #===========================================================================
-    # get imputed/filled WSE
+    # 03.2 get imputed/filled WSE
     #===========================================================================
+    """seems like there should be  away to apply grow_thresh_bar to speed up the distance calcs below""" 
         
     if distance_fill == 'neutral':
-        wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName)) 
+        wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName))
+        
+        if debug:
+            wse_filled_xr = dataarray_from_masked(ma.MaskedArray(wse_filled_ar), wse_fine_xr2)
         
     elif distance_fill == 'terrain_penalty':         
         wse_filled_xr = _distance_fill_cost_terrain(wse_fine_xr2, dem_fine_xr,
@@ -533,11 +595,40 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     else:
         raise KeyError(distance_fill)
     
+
     #===========================================================================
-    # #infill w/ valid wses
+    #03.3 decay
+    #===========================================================================
+    if decay_frac>0.0:
+        log.debug(f'applying decay_frac={decay_frac}')
+        
+        #convert the decay_frac to geographic
+        try:
+            res_t = approximate_resolution_meters(wse_fine_xr2)
+            
+            decay_frac_m = np.abs(res_t).mean()*decay_frac
+            
+        except Exception as e:
+            warnings.warn(f'failed to convert decay_frac to meters... usting raw\n    {e}')
+            decay_frac_m=decay_frac
+        
+        #multiply by distance to nearest wet
+        log.debug(f'applying decay_frac_m={decay_frac_m:.3f}')        
+        decay_ar = distance_ar*decay_frac_m
+        
+        meta_d['decay_frac_m'] = decay_frac_m
+        
+    else:
+        decay_ar = np.zeros(distance_ar.shape)
+    
+    #===========================================================================
+    # 03.4 infill w/ valid wses
     #===========================================================================
     log.debug(f'infilling w/ valids')
-    wse_ar = np.where(wse_filled_ar>dem_mar.data, wse_filled_ar, np.nan)
+    wse_ar = np.where(
+        np.logical_and(grow_thresh_bar,
+                       (wse_filled_ar-decay_ar)>dem_mar.data
+                       ), wse_filled_ar, np.nan)
         
     
     wse_fine_xr3 = dataarray_from_masked(
@@ -550,8 +641,28 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     if debug:
         if not wse_fine_xr3.isnull().sum()<=wse_fine_xr2.isnull().sum():
             raise AssertionError(f'dry-cell failed to decrease during {phaseName}')        
- 
+        
+        #write the phase result
         to_gtiff(wse_fine_xr3, phaseName)
+        
+        #write the wse grow/filled
+        wse_filled_xr.attrs['layerName']='2wse_fill'
+        to_gtiff(wse_filled_xr, phaseName)
+        
+        
+        
+        #write growth threshold
+        if not dp_coarse_pixel_max is None:
+            grow_xr = dataarray_from_masked(ma.MaskedArray(grow_thresh_bar.astype(float), mask=dem_fine_xr.isnull().data), dem_fine_xr)
+            grow_xr.attrs['layerName'] = '1grow_thresh'
+            to_gtiff(grow_xr, phaseName)
+            
+        
+        #write decay
+        if (decay_frac>0.0) or (not decay_frac is None):
+            decay_xr = dataarray_from_masked(ma.MaskedArray(decay_ar, mask=dem_fine_xr.isnull().data), dem_fine_xr)
+            decay_xr.attrs['layerName'] = '3decay'
+            to_gtiff(decay_xr, phaseName)
         
     if write_meta:
         meta_d['distance_fill'] = distance_fill
