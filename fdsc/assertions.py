@@ -257,7 +257,7 @@ def assert_xr_geoTiff(da, nodata_value=-9999, x_dim="x", y_dim="y",
     # Check nodata value
     if da.rio.nodata != nodata_value:
         raise AssertionError(
-            f"Nodata value does not match expected value: {da.rio.nodata} != {nodata_value}"
+            f"Nodata value does not match expected value: {da.rio.nodata} != {nodata_value}\n"+msg
         )
         
     if da.rio.crs is None:
@@ -316,8 +316,11 @@ def assert_wse_xr(wse_xr, msg=''):
     assert_xr_geoTiff(wse_xr, msg=msg)
     return assert_wse_ar(wse_xr.to_masked_array(), msg=msg)
 
+def assert_wsh_xr(da, msg=''):
+    assert_xr_geoTiff(da, msg=msg)
+    return assert_wsh_ar(da.to_masked_array(), msg=msg)
 
-import numpy as np
+
 
 def assert_integer_like_and_nearly_identical(arr, rtol=1e-5, atol=1e-8):
     """
@@ -351,17 +354,22 @@ def assert_integer_like_and_nearly_identical(arr, rtol=1e-5, atol=1e-8):
         )
 
 
-def assert_equal_raster_metadata(left_xr, right_xr, msg=""):
+ 
+
+def assert_equal_raster_metadata(left_xr, right_xr, coord_tolerance=1e-6, msg=""):
     """
-    Asserts that two rioxarray DataArrays have identical spatial and rasterio metadata.
+    Asserts that two rioxarray DataArrays have identical spatial and rasterio metadata,
+    including near-identical coordinates within a tolerance.
 
     Args:
         left_xr (xr.DataArray): The first rioxarray DataArray to compare.
         right_xr (xr.DataArray): The second rioxarray DataArray to compare.
+        coord_tolerance (float, optional): The tolerance for coordinate differences (default 1e-6).
         msg (str, optional): An additional message to include in the AssertionError.
 
     Raises:
-        AssertionError: If any of the spatial or rasterio attributes differ.
+        AssertionError: If any of the spatial or rasterio attributes differ,
+                        including coordinates beyond the tolerance.
     """
     if not __debug__:  # Skip assertion in optimized mode (-O)
         return
@@ -376,10 +384,16 @@ def assert_equal_raster_metadata(left_xr, right_xr, msg=""):
     if left_xr.dims != right_xr.dims:
         raise AssertionError(f"Dimension names do not match: {left_xr.rio.dims} vs {right_xr.rio.dims}." + msg)
 
+    # Check coordinate values within tolerance
+    if not np.allclose(left_xr.x, right_xr.x, atol=coord_tolerance):
+        raise AssertionError(f"X coordinates do not match within tolerance ({coord_tolerance})." + msg)
+    if not np.allclose(left_xr.y, right_xr.y, atol=coord_tolerance):
+        raise AssertionError(f"Y coordinates do not match within tolerance ({coord_tolerance})." + msg)
+
     # Check coordinate reference system (CRS)
     if left_xr.rio.crs != right_xr.rio.crs:
         raise AssertionError(f"CRS does not match: {left_xr.rio.crs} vs {right_xr.rio.crs}." + msg)
-    
+
     # Check transform
     if not np.allclose(left_xr.rio.transform(), right_xr.rio.transform()):
         raise AssertionError(f"Transform does not match: {left_xr.rio.transform()} vs {right_xr.rio.transform()}." + msg)
@@ -387,14 +401,13 @@ def assert_equal_raster_metadata(left_xr, right_xr, msg=""):
     # Check resolution
     if not np.allclose(left_xr.rio.resolution(), right_xr.rio.resolution()):
         raise AssertionError(f"Resolution does not match: {left_xr.rio.resolution()} vs {right_xr.rio.resolution()}." + msg)
-    
+
     # Optionally check other attributes like nodata, count (number of bands)
     if left_xr.rio.nodata != right_xr.rio.nodata:
         raise AssertionError(f"Nodata value does not match: {left_xr.rio.nodata} vs {right_xr.rio.nodata}." + msg)
 
     if left_xr.rio.count != right_xr.rio.count:
         raise AssertionError(f"Number of bands does not match: {left_xr.rio.count} vs {right_xr.rio.count}." + msg)
-
 
     
     

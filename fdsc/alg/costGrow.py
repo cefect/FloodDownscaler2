@@ -712,7 +712,9 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         
         #check all resampled wets are still wet
         if not np.logical_and(wse_fine_xr4.notnull(), wse_fine_xr2.notnull()).sum()==  wse_fine_xr2.notnull().sum():
-            raise AssertionError(f'lost some wet cells from resample')      
+            raise AssertionError(f'lost some wet cells from resample')
+        
+        assert_equal_raster_metadata(wse_fine_xr4, dem_fine_xr)
  
         to_gtiff(wse_fine_xr4, phaseName)
         
@@ -725,7 +727,8 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     # 05 WRAP------
     #===========================================================================
     #append wet counts to meta
-    meta_d.update({f'wetCnt_{k}':v for k,v in wet_d.items()})
+    if write_meta:
+        meta_d.update({f'wetCnt_{k}':v for k,v in wet_d.items()})
     
     log.debug(f'finished w/ {meta_d}')
     return wse_fine_xr4, meta_d
