@@ -7,27 +7,80 @@ Created on May 25, 2024
 #===============================================================================
 # imports----------
 #===============================================================================
-import os, argparse, logging, datetime
+import os, argparse, logging, datetime, tempfile, pickle
 import rioxarray
 from rasterio.enums import Resampling
 
-from scipy.ndimage import distance_transform_edt
-from skimage.feature import peak_local_max
+import scipy.ndimage 
+ 
 from skimage.graph import MCP_Geometric
 #from osgeo import gdal
 
 from parameters import today_str
 from fdsc.hp.logr import get_new_file_logger, get_log_stream
-from fdsc.hp.xr import resample_match_xr, dataarray_from_masked
+from fdsc.hp.xr import resample_match_xr, dataarray_from_masked, xr_to_GeoTiff
 from fdsc.assertions import *
 
 from .coms import shape_ratio
 
+#===============================================================================
+# HELPERS------
+#===============================================================================
 
+
+def _get_od(out_dir):
+    if out_dir is None:
+        out_dir = tempfile.mkdtemp()
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+        
+    return out_dir
+        
+        
+def _write_to_pick(data, fp, log=None):
+    """writing pickels for tests"""
+    
+    plog = lambda msg: print(msg) if log is None else log.debug(msg)
+    
+    if not os.path.exists(os.path.dirname(fp)):
+        os.makedirs(os.path.dirname(fp))
+        
+    with open(fp, "wb") as f:
+        pickle.dump(data, f)
+ 
+    plog(f'wrote to pickle\n    {fp}')
+        
+    
+def _get_zero_padded_shape(shape):
+    """
+    Takes a shape-like tuple (e.g., (10, 10)) and returns a zero-padded string like '0010x0010'.
+
+    Args:
+        shape: A tuple representing the shape of a 2D array (e.g., (y_size, x_size)).
+
+    Returns:
+        str: A zero-padded string representing the 2D shape (e.g., '0010x0010').
+    """
+
+    try:
+        # Ensure the input is a tuple with length 2
+        if not isinstance(shape, tuple) or len(shape) != 2:
+            raise ValueError("Input shape must be a tuple of length 2.")
+        
+        # Get the dimensions
+        y_size, x_size = shape
+        
+        # Create a formatted string, zero-padding up to 4 digits
+        shape_str = f"{y_size:04d}x{x_size:04d}" 
+        
+        return shape_str
+    except ValueError as e:
+        print(f"Error: {e}")
+        return None  # Or raise the exception again, depending on your needs
 
  
     
-def _cost_distance_fill(mar, cost_ar):
+def _distance_fill_cost(mar, cost_ar):
     """
     Fills masked values in a 2D array using cost-distance weighted nearest neighbor interpolation.
 
@@ -83,6 +136,54 @@ def _cost_distance_fill(mar, cost_ar):
  
 
 
+
+def _distance_fill(mar,
+                   method='distance_transform_cdt', 
+                   **kwargs):
+    """fill masked values with their nearest unmasked value
+    
+    Params
+    ------------
+    method: str
+        scipy.ndimage method with which to apply the distance calc
+            distance_transform_cdt: chamfer transform
+                fastest in 'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
+                but not as nice looking
+                
+                takes an additional 'metric' kwarg
+                    metric='chessboard', default
+                        d8 (10% slower), a bit nicer looking
+                    metric='taxicab'
+                        d4
+                
+            distance_transform_edt: true-euclidian
+                2x slower in 'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
+                
+            distance_transform_bf: 
+                super slow
+    """
+    
+    assert isinstance(mar, ma.MaskedArray)
+    assert mar.mask.any()
+    assert not mar.mask.all()
+    
+    #retrieve func
+    f = getattr(scipy.ndimage, method)
+    
+    indices_ar = f(
+        mar.mask.astype(int), 
+        return_indices=True, 
+        return_distances=False,
+        **kwargs)
+    
+    #use the computed indicies to map the source values onto the target
+    filled_ar = mar.data.copy() 
+    filled_ar[mar.mask] = mar.data[tuple(indices_ar[:, mar.mask])]
+    
+
+    
+    return filled_ar
+
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 cost='neutral',
@@ -90,6 +191,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                  logger=None,
                  write_meta=True,
                  debug=__debug__,
+                 out_dir=None,
                  ):
     """
     downscale a coarse WSE grid using costGrow algos and xarray
@@ -99,6 +201,10 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     cost: str
         type of cost surface to use
             neutral: neutral cost surface
+            
+            
+    out_dir: str, optional
+        output directory for debugging intermediaries
     """
     
     #=======================================================================
@@ -111,21 +217,67 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     #===========================================================================
     # pre-chescks
     #===========================================================================
+    phaseName = '00_raw'
+    log.debug(phaseName)
+    
     if debug:
         assert_dem_xr(dem_fine_xr, msg='DEM')
         assert_wse_xr(wse_coarse_xr, msg='WSE')        
         assert_equal_extents_xr(dem_fine_xr, wse_coarse_xr, msg='\nraw inputs')
         
- 
+        out_dir = _get_od(out_dir)
+            
+                            
+        log.debug(f'out_dir set to \n    {out_dir}')
+        
+
+        
     #===========================================================================
-    # get rescaling value
+    # function helpers------
     #===========================================================================
-    shape_rat_t = shape_ratio(dem_fine_xr, wse_coarse_xr)
+    if debug:
+        def to_gtiff(da, phaseName, layerName=None):
+            
+            #output path
+            shape_str = _get_zero_padded_shape(da.shape)
+            if layerName is None:
+                layerName = da.attrs['layerName']
  
+            ofp = os.path.join(out_dir, f'{phaseName}_{layerName}_{shape_str}')
+                
+            assert not os.path.exists(ofp), ofp
+                
+            #write GeoTiff (for debugging)
+            meta_d[f'{phaseName}_{layerName}'] = xr_to_GeoTiff(da, ofp+'.tif', log=log, compress=None) 
+            
+            #write pickle (for unit tests) 
+            _write_to_pick(da, os.path.join(out_dir, phaseName, layerName+'.pkl'))            
+            #wrap
+            
+            
+            return ofp
+    
+    
+    #===========================================================================
+    # setup
+    #===========================================================================
+    
+    dem_fine_xr.attrs['layerName'] = 'dem_fine'
+    wse_coarse_xr.attrs['layerName'] = 'wse_coarse'
+    
+    #dump inputs (needs to come after the debug)
+    if debug:
+        to_gtiff(wse_coarse_xr, phaseName)
+        to_gtiff(dem_fine_xr, phaseName)
+    
+    #get rescaling value
+    shape_rat_t = shape_ratio(dem_fine_xr, wse_coarse_xr) 
     assert_integer_like_and_nearly_identical(np.array(shape_rat_t))
     
     downscale=int(shape_rat_t[0])
     
+    
+
     #===========================================================================
     # finish init
     #===========================================================================
@@ -146,22 +298,34 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
  
     
     #===========================================================================
-    # 01 resample
+    # 01 resample------
     #===========================================================================
+    phaseName='01_resamp'
+    log.debug(phaseName)
+    
     wse_fine_xr1 = resample_match_xr(wse_coarse_xr, dem_fine_xr, resampling=Resampling.bilinear)
+    wse_fine_xr1.attrs['layerName']='wse_fine'
     
     if write_meta:
-        meta_d['wse_fine_1resap_wet_cnt']=np.invert(wse_fine_xr1.to_masked_array().mask).sum()
+        meta_d[f'{phaseName}_wseFine_wetCnt']=np.invert(wse_fine_xr1.to_masked_array().mask).sum()
         
     if debug:
         assert_wse_xr(wse_fine_xr1)
-        assert_equal_raster_metadata(wse_fine_xr1, dem_fine_xr, msg='post-resampling')
+        assert_equal_raster_metadata(wse_fine_xr1, dem_fine_xr, msg=phaseName)
+        
+        to_gtiff(wse_fine_xr1, phaseName)
+        
 
     #===========================================================================
-    # 02 wet partials
+    # 02 wet partials--------
     #===========================================================================
+    phaseName='02_wp'
+    log.debug(phaseName)
+    
     wse_mar = wse_fine_xr1.to_masked_array()
     dem_mar = dem_fine_xr.to_masked_array()
+    
+    
     
     wse_mar2 = ma.MaskedArray(np.nan_to_num(wse_mar.data, nodata),
               mask=np.logical_or(
@@ -177,17 +341,33 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         
     if debug:
         if not wse_mar.mask.sum()<=wse_mar2.mask.sum():
-            raise AssertionError('expected wet-cell count to decrease during wet-partial treatment')
+            raise AssertionError('expected wet-cell count to decrease during wet-partial treatment')        
+ 
+        to_gtiff(wse_fine_xr2, phaseName)
+        
         
         
     #===========================================================================
-    # 03 dry partials
+    # 03 dry partials--------
     #===========================================================================
+    phaseName='03_dp'
+    log.debug(phaseName)
+    
+    
     wse_mar3 = wse_fine_xr2.to_masked_array()
+    log.debug(f'computing 03 dry partials w/ cost={cost}')
     if cost=='neutral':
-        """probably something faster if we're using a neutral surface"""
-        cost_ar = np.ones(wse_mar3.shape)        
-        wse_filled_ar = _cost_distance_fill(wse_mar3, cost_ar)
+        
+        #compute the distances and incdicis 
+        wse_filled_ar = _distance_fill(wse_mar3)
+        
+        
+ 
+        #=======================================================================
+        # """probably something faster if we're using a neutral surface"""
+        # cost_ar = np.ones(wse_mar3.shape)        
+        # wse_filled_ar = _distance_fill_cost(wse_mar3, cost_ar)
+        #=======================================================================
         
     elif cost=='terrain':
         #compute neutral wse impute
@@ -207,6 +387,9 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         raise KeyError(cost)
     
     wse_fine_xr3 = dataarray_from_masked(ma.MaskedArray(wse_filled_ar, dem_mar.mask), wse_fine_xr2)
+    
+    
+    return None, meta_d
  
  
     

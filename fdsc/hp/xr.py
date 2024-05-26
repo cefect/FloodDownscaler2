@@ -3,11 +3,41 @@ Created on May 25, 2024
 
 @author: cef
 '''
-
+import os
 import xarray as xr
 import numpy as np
 import numpy.ma as ma
+from fdsc.assertions import assert_xr_geoTiff
 
+def xr_to_GeoTiff(da, raster_fp, log=None, compress='LZW'): 
+
+    #directory setup
+    if not os.path.exists(os.path.dirname(raster_fp)):
+        os.makedirs(os.path.dirname(raster_fp))
+    
+    assert raster_fp.endswith('.tif')
+    
+    assert isinstance(da, xr.DataArray), type(da)
+    #===========================================================================
+    # prep
+    #===========================================================================
+    da = da.fillna(-9999).rio.write_nodata(-9999)
+    
+    assert_xr_geoTiff(da)
+    
+    da.rio.to_raster(raster_fp,  compute=True, compress=compress)
+    
+    #===========================================================================
+    # post
+    #===========================================================================
+    
+    msg = f'wrote {da.shape} to \n    {raster_fp}'
+    if not log is None:
+        log.debug(msg)
+    else:
+        print(msg)
+    
+    return raster_fp
 
 def resample_match_xr(da, target_da, **kwargs):
     """resampling with better treatment for masks"""
@@ -52,6 +82,7 @@ def dataarray_from_masked(masked_array, target_dataarray):
         filled_array,
         dims=target_dataarray.dims,
         coords=target_dataarray.coords,
+        attrs=target_dataarray.attrs
     )
 
     # Ensure rio attributes are copied over

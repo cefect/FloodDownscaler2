@@ -217,13 +217,13 @@ def assert_equal_extents_xr(left_xr, right_xr, msg='', rtol=1e-5, atol=1e-8):
     if not np.allclose(left_bounds, right_bounds, rtol=rtol, atol=atol):
         raise AssertionError(f"Bounding box extents are not equal. {msg}")
 
-def assert_xr_geoTiff(xarray, nodata_value=-9999, x_dim="x", y_dim="y",
+def assert_xr_geoTiff(da, nodata_value=-9999, x_dim="x", y_dim="y",
                       msg=''):
     """
-    Asserts that a rioxarray DataArray conforms to typical GeoTIFF conventions.
+    Asserts that a rioda DataArray conforms to typical GeoTIFF conventions.
 
     Args:
-        xarray (xr.DataArray): The rioxarray DataArray to check.
+        da (xr.DataArray): The rioda DataArray to check.
         nodata_value (int, optional): The expected nodata value (default: -9999).
         x_dim (str, optional): The name of the x dimension (default: "x").
         y_dim (str, optional): The name of the y dimension (default: "y").
@@ -234,23 +234,38 @@ def assert_xr_geoTiff(xarray, nodata_value=-9999, x_dim="x", y_dim="y",
     if not __debug__:  # Skip assertion in optimized mode (-O)
         return
 
-    if not isinstance(xarray, xr.DataArray):
-        raise AssertionError("Input must be an xarray DataArray.")
+    if not isinstance(da, xr.DataArray):
+        raise AssertionError("Input must be an da DataArray.")
     
-    assert_square_pixels(xarray, msg=msg)
+    
+    #NO... need to preserve the data structure...
+    #reprojection introduces more problems than it solves
+    #===========================================================================
+    # if not da.rio.crs.is_geographic:
+    #     """most things would work fine in geographic, 
+    #     but this introduces some complexity when computing horizontal vs vertical distances I'd rather not htink about
+    #     """
+    #     raise AssertionError(f'expects a projected crs. reproject your layers')
+    #===========================================================================
+    
+    #need to allow this for geographic data
+    try:
+        assert_square_pixels(da, msg=msg)
+    except Exception as e:
+        warnings.warn(str(e))
 
     # Check nodata value
-    if xarray.rio.nodata != nodata_value:
+    if da.rio.nodata != nodata_value:
         raise AssertionError(
-            f"Nodata value does not match expected value: {xarray.rio.nodata} != {nodata_value}"
+            f"Nodata value does not match expected value: {da.rio.nodata} != {nodata_value}"
         )
 
     # Check for presence of x and y dimensions
-    if x_dim not in xarray.dims or y_dim not in xarray.dims:
+    if x_dim not in da.dims or y_dim not in da.dims:
         raise AssertionError(f"Missing required dimensions: {x_dim} or {y_dim}")
     
     # Check that x and y dims are 1D
-    if len(xarray[x_dim].shape) != 1 or len(xarray[y_dim].shape) != 1:
+    if len(da[x_dim].shape) != 1 or len(da[y_dim].shape) != 1:
         raise AssertionError(f"Dimensions '{x_dim}' and '{y_dim}' must be 1D")
     
     
@@ -278,10 +293,16 @@ def assert_square_pixels(xarray, rtol=1e-5, msg=''):
     
     # Extract x and y resolution
     x_res, y_res = xarray.rio.resolution()
+    
+    """normal for geographic data
+    if not x_res>0 or y_res>0:
+        raise AssertionError(f'expect positive resolution, instead got {x_res} x {y_res}\n    {msg}')
+        
+    """
 
     # Check for approximate equality of x and y resolutions
     if not np.isclose(abs(x_res), abs(y_res), rtol=rtol):
-        raise AssertionError(f"Pixel dimensions are not approximately square. {msg}")
+        raise AssertionError(f"Pixel dimensions {x_res} x {y_res} are not approximately square. \n{msg}")
 
  
 def assert_dem_xr(dem_xr, msg=''):

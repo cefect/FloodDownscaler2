@@ -12,6 +12,8 @@ import os, logging, logging.config, pprint, sys
 
 
 
+plog = lambda msg, log: print(msg) if log is None else log.debug(msg)
+
 
         
 def get_new_file_logger(
