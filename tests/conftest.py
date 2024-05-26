@@ -8,15 +8,16 @@ Created on May 25, 2024
 #===============================================================================
 # IMPORTS------
 #===============================================================================
-import os, pathlib, pytest, logging, sys, tempfile
-
+import os, pathlib, pytest, logging, sys, tempfile, pickle, copy
+import rioxarray
 from fdsc.hp.dirz import recursive_file_search
 
 #===============================================================================
 # helpers
 #===============================================================================
 
-
+def _geoTiff_to_xr(fp): 
+    return rioxarray.open_rasterio(fp,masked=False).squeeze().rio.write_nodata(-9999)
 
 #===============================================================================
 # TEST_DATA------------
@@ -34,7 +35,7 @@ additional 'phase' parameters are used to allow for intermediate test data
 from definitions import test_data_dir
 
 if os.path.exists(test_data_dir):
-    test_data_lib = recursive_file_search(test_data_dir, ['.tif'])
+    test_data_lib = recursive_file_search(test_data_dir, ['.tif', '.pkl'])
 
 #===============================================================================
 # #add toy data
@@ -86,16 +87,25 @@ def logger():
 @pytest.fixture(scope='function')
 def dem_fine_fp(caseName, phase):
     assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
-    return test_data_lib[caseName][phase]['dem_fine']
+    return copy.deepcopy(test_data_lib[caseName][phase]['dem_fine'])
 
 @pytest.fixture(scope='function')
 def wse_coarse_fp(caseName, phase):
     assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
-    return test_data_lib[caseName][phase]['wse_coarse']
+    return copy.deepcopy(test_data_lib[caseName][phase]['wse_coarse'])
 
 @pytest.fixture(scope='function')
 def wse_fine_xr(caseName, phase):
-    return test_data_lib[caseName][phase]['wse_fine_xr']
+    d = test_data_lib[caseName][phase]
+    
+    #load from file once
+    if not 'wse_fine_xr' in d:
+        print(f'loading \'wse_fine_xr\' from pickle file')                
+        with open(d['wse_fine'], "rb") as f:
+            d['wse_fine_xr'] = pickle.load(f)
+ 
+    #return a copy
+    return copy.deepcopy(test_data_lib[caseName][phase]['wse_fine_xr'])
 
 
 

@@ -19,6 +19,7 @@ import rioxarray
 
 from parameters import today_str
 from .hp.logr import get_new_file_logger, get_log_stream
+from .hp.rio import geographic_to_projected
 from .assertions import *
 
 
@@ -27,6 +28,8 @@ from .assertions import *
 #===============================================================================
 def _geoTiff_to_xr(fp, nodata=-9999): 
     return rioxarray.open_rasterio(fp,masked=True).squeeze().rio.write_nodata(nodata)
+
+ 
 
 #===============================================================================
 # RUNNERS-----------
@@ -81,6 +84,14 @@ def downscale_wse_raster(
                     logger=get_log_stream(level = logging.DEBUG)
                     )
         
+    
+    #===========================================================================
+    # pre-process
+    #===========================================================================
+    """this is a bad idea... no good way to revert after compute
+    dem_fine_fp = geographic_to_projected(dem_fine_fp)
+    """
+    
     #===========================================================================
     # load to Xarray
     #===========================================================================
@@ -97,7 +108,8 @@ def downscale_wse_raster(
         raise KeyError(method)
     
     
-    wse_fine_xr, meta_d = func(dem_fine_xr, wse_coarse_xr,logger=logger,write_meta=write_meta, **params)
+    wse_fine_xr, meta_d = func(dem_fine_xr, wse_coarse_xr,logger=logger,
+                               write_meta=write_meta, out_dir=out_dir, **params)
     
     
  
