@@ -98,6 +98,7 @@ def downscale_wse_raster(
     dem_fine_xr = _geoTiff_to_xr(dem_fine_fp)
     wse_coarse_xr = _geoTiff_to_xr(wse_coarse_fp)
     
+    logger.info(f'enahcing resolution from {wse_coarse_xr.shape} to {dem_fine_xr.shape}')
     #===========================================================================
     # execute
     #===========================================================================

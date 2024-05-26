@@ -10,10 +10,10 @@ Created on May 25, 2024
 import os, argparse, logging, datetime, tempfile, pickle
 import rioxarray
 from rasterio.enums import Resampling
+from tqdm.auto import tqdm
 
 import scipy.ndimage 
- 
-from skimage.graph import MCP_Geometric
+import skimage.graph
 #from osgeo import gdal
 
 from parameters import today_str
@@ -78,23 +78,89 @@ def _get_zero_padded_shape(shape):
         print(f"Error: {e}")
         return None  # Or raise the exception again, depending on your needs
 
+
+def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=None,
+                                cd_backend='wbt',out_dir=None, **kwargs
+                                ):
+    
+ 
+    #===========================================================================
+    # build cost surface from terrain
+    #===========================================================================
+    # #compute neutral wse impute
+ 
+    #quick data fill on coarse, then resample
+        
+    wse_coarse_filled_ar = _distance_fill(wse_coarse_xr.to_masked_array(), log=log)
+    wse_coarse_filled_xr = dataarray_from_masked(ma.MaskedArray(wse_coarse_filled_ar), wse_coarse_xr)
+    
+    log.debug(f'reseampling \'wse_coarse_filled_xr\' to fine')
+    wse_filled_xr1 = resample_match_xr(wse_coarse_filled_xr, dem_fine_xr, resampling=Resampling.bilinear)
+    
+    
+    #get delta
+    log.debug(f'computing fine delta')
+    delta_xr = dem_fine_xr - wse_filled_xr1
+    
+    #normalize cost surface
+    """
+    
+    from zero to one?
+    
+        no... want more separation between positive/negative
+    
+    negative:free; positives:some water surface slope tuning?
+    
+        xr.where(delta_xr>0, 0.0, delta_xr)
+    
+        should read more about what the cost surface is
+    
+    """
+    log.debug(f'computing cost surface')
+    cost_xr = xr.where(delta_xr < 0, 0.0, delta_xr).fillna(999).round(1)
+    cost_xr.rio.write_crs(dem_fine_xr.rio.crs, inplace=True) #not sure where this got lost
+    
+    #===========================================================================
+    # #impute w/ cost
+    #===========================================================================
+    log.debug(f'imputing w/ costsurface and {cd_backend}')
+    if cd_backend=='skimage':
+        f = _distance_fill_cost_skimage
+        
+        f(wse_fine_xr.to_masked_array(), cost_xr.data, log=log, **kwargs)
+        
+        raise NotImplementedError('too slow')
+        
+    elif cd_backend=='wbt':
+        #needs geospatial data
+        
+        wse_filled_xr = _distance_fill_cost_wbt(wse_fine_xr, cost_xr, log=log.getChild(cd_backend), 
+                        out_dir = os.path.join(_get_od(out_dir), 'wbt'), **kwargs)
+    else:
+        raise KeyError(cd_backend)
  
     
-def _distance_fill_cost(mar, cost_ar):
+    return wse_filled_xr
+
+def _distance_fill_cost_skimage(mar, cost_ar, log=None):
     """
     Fills masked values in a 2D array using cost-distance weighted nearest neighbor interpolation.
 
-     
+    this is WAY too slow
+    
     could use scipy.ndimage.distance_transform_edt to create a max_dist buffer
         reduce the number of sources/targets as we're only concerned with edges
      
     """
     assert isinstance(mar, ma.MaskedArray)
-    assert isinstance(cost_ar, np.ndarray)
+    assert mar.mask.any()
+    assert not mar.mask.all()
     
+    plog = lambda msg: print(msg) if log is None else log.debug(msg)
  
     # Create MCP object with cost surface
-    mcp = MCP_Geometric(cost_ar,
+    plog(f'init on skimage.graph.MCP w/ {np.invert(mar.mask).sum()} source cells')
+    mcp = skimage.graph.MCP(cost_ar,
                         fully_connected=False, #d4
                         sampling=None, #square grid
                         )
@@ -102,9 +168,10 @@ def _distance_fill_cost(mar, cost_ar):
     end_indices = np.argwhere(mar.mask)  # Coordinates of masked cells
     
     # Find least-cost paths from all masked points to unmasked points
+    plog(f'mcp.find_costs')
     cumulative_costs, traceback_ar = mcp.find_costs(
         starts=np.argwhere(~mar.mask),
-        #ends=end_indices,
+        #ends=end_indices, #specifying these doesn't seem to improve performance
         #find_all_ends=True, #minimum-cost-path to every specified end-position will be found;
         )
     
@@ -129,16 +196,88 @@ def _distance_fill_cost(mar, cost_ar):
  #        filled_ar[i, j] =  mar.data[start]
  #==============================================================================
     # Fill Masked Values (List Comprehension Version)
-    filled_ar[tuple(zip(*end_indices))] = [mar.data[mcp.traceback(idx)[0]] for idx in end_indices]
+    plog(f'filling destination cells w/ least-cost sources')
+    filled_ar[tuple(zip(*end_indices))] = [
+        mar.data[mcp.traceback(idx)[0]] for idx in tqdm(end_indices, desc='distance_fill_cost')
+        ]
     
     return filled_ar
 
+def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
+    """
+    Fills masked values in a 2D array using cost-distance weighted nearest neighbor interpolation.
+    """
+
+    
+    out_dir = _get_od(out_dir)
+    
+    to_gtif = lambda da, fn: xr_to_GeoTiff(da, os.path.join(out_dir, fn), log)
+    
+    
+    #===========================================================================
+    # init wbt
+    #===========================================================================
+    from fdsc.hp.wbt import wbt
+    wbt.set_default_callback(lambda value: log.debug(value) if not "%" in value else None)
+            
+    #===========================================================================
+    # prep
+    #===========================================================================
+    
+    #add arbitrary increment to handle negative WSE
+    add_increment=0
+ 
+    if wse_xr.min()<0:
+        add_increment=9999
+        log.warning(f'adding increment {add_increment} to handle negative WSE')    
+        wse_xr = wse_xr + add_increment
+ 
+    
+    #dump to GeoTiff
+    log.debug(f'dumping Xarrays to GeoTiffs')
+    wse_fp = to_gtif(wse_xr, '00_wse.tif')
+    cost_fp = to_gtif(cost_xr, '00_cost.tif')
+    
+    
+    #===========================================================================
+    # #compute backlink raster
+    #===========================================================================
+    log.debug("wbt.cost_distance")
+    backlink_fp = os.path.join(out_dir, f'01_backlink.tif')
+    if not wbt.cost_distance(wse_fp,cost_fp, 
+                             os.path.join(out_dir, f'01_outAccum.tif'),
+                             backlink_fp) == 0:
+        raise IOError('cost_distance')
+    
+    assert os.path.exists(backlink_fp)
+    #=======================================================================
+    # costAllocation
+    #=======================================================================
+    log.debug("wbt.cost_allocation")
+    costAlloc_fp = os.path.join(out_dir, '02_costAllocation.tif')
+    if not wbt.cost_allocation(wse_fp, backlink_fp, costAlloc_fp) == 0:
+        raise IOError('wbt.cost_allocation')
+    
+    log.debug(f'wrote to \n    {costAlloc_fp}')
+    #===========================================================================
+    # back to Xarray
+    #===========================================================================
+    load_xr = lambda x: rioxarray.open_rasterio(x,masked=False).squeeze().rio.write_nodata(-9999)
+    
+    wse_filled_xr = load_xr(costAlloc_fp)
+    wse_filled_xr.attrs = wse_xr.attrs.copy()
+    
+    log.debug('finished')
+    
+    return wse_filled_xr
+ 
  
 
 
 
 def _distance_fill(mar,
-                   method='distance_transform_cdt', 
+                   method='distance_transform_cdt',
+                   log=None, 
                    **kwargs):
     """fill masked values with their nearest unmasked value
     
@@ -167,7 +306,10 @@ def _distance_fill(mar,
     assert mar.mask.any()
     assert not mar.mask.all()
     
+    plog = lambda msg: print(msg) if log is None else log.debug(msg)
+    
     #retrieve func
+    plog(f'_distance_fill w/ \'{method}\' {kwargs}')
     f = getattr(scipy.ndimage, method)
     
     indices_ar = f(
@@ -181,12 +323,15 @@ def _distance_fill(mar,
     filled_ar[mar.mask] = mar.data[tuple(indices_ar[:, mar.mask])]
     
 
-    
+    plog(f'finished _distance_fill')
     return filled_ar
+
+
+
 
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
-                cost='neutral',
+                distance_fill='neutral',
                           
                  logger=None,
                  write_meta=True,
@@ -198,9 +343,10 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     
     params
     --------
-    cost: str
+    distance_fill: str
         type of cost surface to use
-            neutral: neutral cost surface
+            neutral: nn flat surface extrapolation
+            terrain_penalty: cost distance extrapolation with terrain penalty
             
             
     out_dir: str, optional
@@ -214,10 +360,11 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     
     meta_d=dict()
     nodata = dem_fine_xr.rio.nodata
+    dem_mask = dem_fine_xr.to_masked_array().mask
     #===========================================================================
     # pre-chescks
     #===========================================================================
-    phaseName = '00_raw'
+    phaseName = '00_inputs'
     log.debug(phaseName)
     
     if debug:
@@ -288,7 +435,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                 'fine_shape':dem_fine_xr.shape,
              'coarse_shape':wse_coarse_xr.shape,
              'start':datetime.datetime.now(),
-             'dem_mask_cnt':dem_fine_xr.to_masked_array().mask.sum(),
+             'dem_mask_cnt':dem_mask.sum(),
              'wse_wet_cnt':np.invert(wse_mask).sum(),
              'debug':debug,
              })
@@ -335,6 +482,10 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     
     wse_fine_xr2 = dataarray_from_masked(wse_mar2, wse_fine_xr1)
     
+    
+    #===========================================================================
+    # post
+    #===========================================================================
     if write_meta:
         meta_d['wse_fine_2wp_wet_cnt']=np.invert(wse_fine_xr2.to_masked_array().mask).sum()
         
@@ -345,49 +496,52 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
  
         to_gtiff(wse_fine_xr2, phaseName)
         
+        assert_xr_geoTiff(wse_fine_xr2)
         
+ 
         
     #===========================================================================
     # 03 dry partials--------
     #===========================================================================
     phaseName='03_dp'
-    log.debug(phaseName)
-    
-    
-    wse_mar3 = wse_fine_xr2.to_masked_array()
-    log.debug(f'computing 03 dry partials w/ cost={cost}')
-    if cost=='neutral':
-        
-        #compute the distances and incdicis 
-        wse_filled_ar = _distance_fill(wse_mar3)
-        
-        
+    log.debug(f'{phaseName} w/ distance_fill={distance_fill}')
  
-        #=======================================================================
-        # """probably something faster if we're using a neutral surface"""
-        # cost_ar = np.ones(wse_mar3.shape)        
-        # wse_filled_ar = _distance_fill_cost(wse_mar3, cost_ar)
-        #=======================================================================
+    #===========================================================================
+    # get imputed/filled WSE
+    #===========================================================================
         
-    elif cost=='terrain':
-        #compute neutral wse impute
+    if distance_fill == 'neutral':
+        wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName)) 
         
-        #get delta
+    elif distance_fill == 'terrain_penalty':         
+        wse_filled_xr = _distance_fill_cost_terrain(wse_fine_xr2, dem_fine_xr,
+                                    wse_coarse_xr, log=log.getChild(phaseName),
+                                    out_dir=out_dir)
         
-        #normalize cost surface
-        """
-        from zero to one?
-            no... want more separation between positive/negative
-        negative:free; positives:some water surface slope tuning?
-            should read more about what the cost surface is
-        """
-                
+        wse_filled_ar = wse_filled_xr.data
  
     else:
-        raise KeyError(cost)
+        raise KeyError(distance_fill)
     
-    wse_fine_xr3 = dataarray_from_masked(ma.MaskedArray(wse_filled_ar, dem_mar.mask), wse_fine_xr2)
+    #===========================================================================
+    # #infill w/ valid wses
+    #===========================================================================
+    log.debug(f'infilling w/ valids')
+    wse_ar = np.where(wse_filled_ar>dem_mar.data, wse_filled_ar, np.nan)
+        
     
+    wse_fine_xr3 = dataarray_from_masked(
+        ma.MaskedArray(wse_ar, mask=np.logical_or(np.isnan(wse_ar), dem_mask)), wse_fine_xr2)
+    
+    
+    #===========================================================================
+    # post
+    #===========================================================================
+    if debug:
+        if not wse_fine_xr3.isnull().sum()<=wse_fine_xr2.isnull().sum():
+            raise AssertionError(f'dry-cell failed to decrease during {phaseName}')        
+ 
+        to_gtiff(wse_fine_xr3, phaseName)
     
     return None, meta_d
  

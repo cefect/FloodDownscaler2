@@ -18,12 +18,23 @@ def xr_to_GeoTiff(da, raster_fp, log=None, compress='LZW'):
     assert raster_fp.endswith('.tif')
     
     assert isinstance(da, xr.DataArray), type(da)
+    
+    
     #===========================================================================
     # prep
     #===========================================================================
-    da = da.fillna(-9999).rio.write_nodata(-9999)
+    """force some additional confromance
+    necessary as we are less strict with assert_xr_geoTiff than needed for conforming GeoTiffs"""
+    #attrs = da.attrs.copy()
     
-    assert_xr_geoTiff(da)
+     
+    da = da.assign_coords(band=1).expand_dims(dim='band')    
+    da = da.fillna(-9999).rio.write_nodata(-9999) #.rio.write_crs(da.rio.crs)
+    
+    assert_xr_geoTiff(da, msg='precheck')
+    #===========================================================================
+    # write
+    #===========================================================================
     
     da.rio.to_raster(raster_fp,  compute=True, compress=compress)
     
@@ -45,7 +56,8 @@ def resample_match_xr(da, target_da, **kwargs):
     
     #wse_coarse_xr.fillna(0.0).interp_like(dem_fine_xr, method='linear', assume_sorted=True, kwargs={'fill_value':'extrapolate'})
     nodata = da.rio.nodata
-    da1 =  da.fillna(nodata).rio.reproject_match(target_da, nodata=nodata, **kwargs)    
+    da1 =  da.fillna(nodata).rio.reproject_match(
+        target_da, nodata=nodata, **kwargs)    
     return da1.where(da1!=nodata, np.nan)
 
 
