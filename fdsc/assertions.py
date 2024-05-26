@@ -259,6 +259,9 @@ def assert_xr_geoTiff(da, nodata_value=-9999, x_dim="x", y_dim="y",
         raise AssertionError(
             f"Nodata value does not match expected value: {da.rio.nodata} != {nodata_value}"
         )
+        
+    if da.rio.crs is None:
+        raise AssertionError(f'CRS must be assigned\n    {msg}')
 
     # Check for presence of x and y dimensions
     if x_dim not in da.dims or y_dim not in da.dims:
