@@ -91,7 +91,8 @@ def logger():
 # FIXTURES.DATA---------
 #===============================================================================
 @pytest.fixture(scope='function')
-def dem_fine_fp(caseName, phase):
+def dem_fine_fp(caseName):
+    phase = '00_raw'
     assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
     assert phase in test_data_lib[caseName], f'missing phase: {caseName}.{phase}'
     return copy.deepcopy(test_data_lib[caseName][phase]['dem_fine'])
