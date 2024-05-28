@@ -9,7 +9,7 @@ import numpy as np
 import numpy.ma as ma
 from rasterio.warp import transform
 
-from fdsc.assertions import assert_xr_geoTiff
+from ..assertions import assert_xr_geoTiff, assert_wsh_xr
 
 def xr_to_GeoTiff(da, raster_fp, log=None, compress='LZW'): 
 
@@ -164,3 +164,29 @@ def get_center_latlon(xds):
     dst_crs = "EPSG:4326"
     lon, lat = transform(xds.rio.crs, dst_crs, [center_x], [center_y])
     return lat[0], lon[0]
+
+
+def wse_to_wsh_xr(dem_xr, wse_xr):
+    delta_ar = np.nan_to_num(wse_xr.data - dem_xr.data, 0.0)
+    
+    wsh_mar = ma.MaskedArray(np.where(delta_ar < 0.0, 0.0, delta_ar), 
+        mask=dem_xr.to_masked_array().mask, #mask where DEM is masked
+        )
+ 
+    wsh_xr = dataarray_from_masked(wsh_mar, dem_xr)
+    
+    if 'layerName' in wse_xr.attrs:
+        wsh_xr.attrs['layerName'] = wse_xr.attrs['layerName'].lower().replace('wse', 'wsh')
+        
+    assert_wsh_xr(wsh_xr)
+    return wsh_xr
+
+
+
+
+
+
+
+
+
+

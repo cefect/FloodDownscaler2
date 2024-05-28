@@ -19,11 +19,11 @@ np.set_printoptions(linewidth=300)
  
     'case_ahr', #(16, 18) to (128, 144)
     'case_jordan', #(197, 213) to (591, 639) EPSG4326    
-    #'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
+    'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
     ])
 @pytest.mark.parametrize('method, params',[
                          ('CostGrow', dict(distance_fill='neutral')),
-                         ('CostGrow', dict(distance_fill='terrain_penalty')),
+                         #('CostGrow', dict(distance_fill='terrain_penalty')),
                          ])
 def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp, 
                               method, params,

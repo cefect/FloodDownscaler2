@@ -93,6 +93,7 @@ def logger():
 @pytest.fixture(scope='function')
 def dem_fine_fp(caseName, phase):
     assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
+    assert phase in test_data_lib[caseName], f'missing phase: {caseName}.{phase}'
     return copy.deepcopy(test_data_lib[caseName][phase]['dem_fine'])
 
 @pytest.fixture(scope='function')
@@ -102,26 +103,38 @@ def wse_coarse_fp(caseName, phase):
 
 
 def _get_xr(caseName, phase, dataName):
+ 
+    assert phase in test_data_lib[caseName], f'missing {caseName}'
     d = test_data_lib[caseName][phase]
     """
     print(test_data_lib[caseName][phase].keys())
     """
+    
+    """switched to always load to workaorund deepcopy
     #load from file once
-    if not dataName in d:
+    if not dataName in d:"""
         
-        print(f'loading \'{dataName}\' from pickle file')
+    k2 = dataName.replace('_xr', '')
+    
+    if not k2 in d:
+        raise KeyError(k2)
+    
+    fp = d[k2]
+    
+    print(f'loading \'{dataName}\' from pickle file\n    {fp}')
+    with open(fp, "rb") as f:
+        da = pickle.load(f)
+ 
+            
+            
+    """deepcopy is not copying the rio data
+    #check it
+    da = copy.deepcopy(test_data_lib[caseName][phase][dataName])"""
+    from ..assertions import assert_xr_geoTiff        
+    assert_xr_geoTiff(da, msg='%s.%s.%s'%(caseName, phase, dataName))
+    
         
-        k2 = dataName.replace('_xr', '')
-        
-        if not k2 in d:
-            raise KeyError(k2)
-        
-        fp = d[k2]
-        
-        with open(fp, "rb") as f:
-            d[dataName] = pickle.load(f)
-            #return a copy
-    return copy.deepcopy(test_data_lib[caseName][phase][dataName])
+    return da
 
 @pytest.fixture(scope='function')
 def wse_fine_xr(caseName, phase):

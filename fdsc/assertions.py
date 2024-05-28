@@ -177,8 +177,10 @@ def assert_wsh_ar(ar, msg=''):
     
     assert_masked_ar(ar, msg=msg)
     
+    """this is OK... WSH mask can align with teh DEM mask
     if not np.all(np.invert(ar.mask)):
-        raise AssertionError(msg+': some masked values')
+        raise AssertionError(msg+'\n got some masked values on a WSH grid')
+    """
     
     if not np.min(ar)==0.0:
         raise AssertionError(msg+': expected zero minimum, got %.2f'%np.min(ar)) 
@@ -252,7 +254,7 @@ def assert_xr_geoTiff(da, nodata_value=-9999, x_dim="x", y_dim="y",
     try:
         assert_square_pixels(da, msg=msg)
     except Exception as e:
-        warnings.warn(str(e))
+        warnings.warn(f'non-square pixels\n{e}')
 
     # Check nodata value
     if da.rio.nodata != nodata_value:

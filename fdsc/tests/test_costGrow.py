@@ -18,8 +18,8 @@ from fdsc.hp.xr import xr_to_GeoTiff, dataarray_from_masked
 @pytest.mark.parametrize('phase', ['02_wp'])
 @pytest.mark.parametrize('caseName',[
     #'case_01', #no DEM
-    #'case_ahr',
-    #'case_jordan',
+    'case_ahr',
+    'case_jordan',
     'case_toy1',
     ])
 def test_distance_fill_cost_wbt(wse_fine_xr, logger, tmpdir):
@@ -34,9 +34,9 @@ def test_distance_fill_cost_wbt(wse_fine_xr, logger, tmpdir):
 @pytest.mark.parametrize('caseName',[
     #'case_01', #no DEM
     #'case_ahr',
-    #'case_jordan',
-    #'case_toy1',
-    'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
+    'case_jordan',
+    'case_toy1',
+    #'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
     ])
 @pytest.mark.parametrize('_method, params',
                          [
@@ -65,7 +65,7 @@ def test_distance_fill(wse_fine_xr, _method, params, tmpdir):
 @pytest.mark.parametrize('caseName',[
     #'case_01', #no DEM
     #'case_ahr',
-    #'case_jordan',
+    'case_jordan',
     'case_toy1',
     #'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
     ]) 
