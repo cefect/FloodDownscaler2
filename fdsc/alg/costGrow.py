@@ -17,11 +17,11 @@ import skimage.graph
 #from osgeo import gdal
 
 from parameters import today_str
-from fdsc.hp.logr import get_new_file_logger, get_log_stream
-from fdsc.hp.xr import (
+from ..hp.logr import get_new_file_logger, get_log_stream
+from ..hp.xr import (
     resample_match_xr, dataarray_from_masked, xr_to_GeoTiff, approximate_resolution_meters
     )
-from fdsc.assertions import *
+from ..assertions import *
 
 from .coms import shape_ratio
 
@@ -207,7 +207,7 @@ def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
     #===========================================================================
     # init wbt
     #===========================================================================
-    from fdsc.hp.wbt import wbt
+    from ..hp.wbt import wbt
     wbt.set_default_callback(lambda value: log.debug(value) if not "%" in value else None)
             
     #===========================================================================
@@ -430,6 +430,8 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     if debug:
         def to_gtiff(da, phaseName, layerName=None):
             
+            
+            
             #output path
             shape_str = _get_zero_padded_shape(da.shape)
             if layerName is None:
@@ -440,6 +442,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
             assert not os.path.exists(ofp), ofp
                 
             #write GeoTiff (for debugging)
+            assert_xr_geoTiff(da, msg=f'output to_gtiff, {phaseName}.{layerName}')
             meta_d[f'{phaseName}_{layerName}'] = xr_to_GeoTiff(da, ofp+'.tif', log=log, compress=None) 
             
             #write pickle (for unit tests) 

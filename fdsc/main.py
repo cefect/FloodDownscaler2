@@ -96,7 +96,12 @@ def downscale_wse_raster(
     # load to Xarray
     #===========================================================================
     dem_fine_xr = _geoTiff_to_xr(dem_fine_fp)
+    assert_xr_geoTiff(dem_fine_xr)
+        
     wse_coarse_xr = _geoTiff_to_xr(wse_coarse_fp)
+    assert_xr_geoTiff(wse_coarse_xr)
+    
+    
     
     logger.info(f'enahcing resolution from {wse_coarse_xr.shape} to {dem_fine_xr.shape}')
     #===========================================================================

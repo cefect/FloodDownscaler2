@@ -142,7 +142,9 @@ def ar_to_geoTiff(array, file_path,
         transform = from_bounds(*bbox.bounds, array.shape[1], array.shape[0]),
         nodata=nodata,
     ) as dst:
-        dst.write(array, 1)  # Write the array to the first (and only) ban
+        dst.write(
+            np.where(array==-9999, np.nan, array), #expects nans
+            1)  # Write the array to the first (and only) ban
         
     return file_path
 
