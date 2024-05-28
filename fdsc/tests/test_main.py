@@ -8,6 +8,8 @@ testing the main script
 
 import os, pathlib, pytest, logging, sys
 
+print(f"Script path: {os.path.abspath(__file__)}\n Script directory: {os.path.dirname(os.path.abspath(__file__))}\n Current working directory: {os.getcwd()}")
+
 import numpy as np
 np.set_printoptions(linewidth=300)
 

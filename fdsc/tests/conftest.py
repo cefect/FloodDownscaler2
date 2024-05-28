@@ -10,7 +10,7 @@ Created on May 25, 2024
 #===============================================================================
 import os, pathlib, pytest, logging, sys, tempfile, pickle, copy
 import rioxarray
-from fdsc.hp.dirz import recursive_file_search
+from ..hp.dirz import recursive_file_search
 
 #===============================================================================
 # helpers
@@ -40,8 +40,8 @@ if os.path.exists(test_data_dir):
 #===============================================================================
 # #add toy data
 #===============================================================================
-from tests.data_toy import test_data_lib as toy_test_data_lib
-from tests.data_toy import ar_to_geoTiff
+from .data_toy import test_data_lib as toy_test_data_lib
+from .data_toy import ar_to_geoTiff
 
 temp_dir = tempfile.mkdtemp()
 

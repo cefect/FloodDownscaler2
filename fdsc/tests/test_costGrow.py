@@ -22,10 +22,10 @@ from fdsc.hp.xr import xr_to_GeoTiff, dataarray_from_masked
     #'case_jordan',
     'case_toy1',
     ])
-def test_distance_fill_cost_wbt(wse_fine_xr):
+def test_distance_fill_cost_wbt(wse_fine_xr, logger, tmpdir):
  
     from fdsc.alg.costGrow import _distance_fill_cost_wbt as func     
-    func(wse_fine_xr.to_masked_array(), xr.ones_like(wse_fine_xr).data)
+    func(wse_fine_xr, xr.ones_like(wse_fine_xr), log=logger, out_dir=tmpdir)
 
 
 
