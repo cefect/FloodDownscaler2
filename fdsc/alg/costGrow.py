@@ -450,7 +450,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
             #wrap
             
             
-            return ofp
+            return ofp + '.tif'
     
     
     #===========================================================================
@@ -512,10 +512,11 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
          
         
     if debug:
-        assert_wse_xr(wse_fine_xr1)
-        assert_equal_raster_metadata(wse_fine_xr1, dem_fine_xr, msg=phaseName)
+        ofp = to_gtiff(wse_fine_xr1, phaseName)
+        assert_wse_xr(wse_fine_xr1, msg=f'{phaseName}\n{ofp}')
+        assert_equal_raster_metadata(wse_fine_xr1, dem_fine_xr, msg=f'{phaseName}\n{ofp}')
         
-        to_gtiff(wse_fine_xr1, phaseName)
+        
         
 
     #===========================================================================

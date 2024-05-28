@@ -164,10 +164,10 @@ def assert_wse_ar(ar, msg=''):
     __tracebackhide__ = True   
     
     try:
-        assert_masked_ar(ar, msg=msg)    
-        assert_partial_wet(ar.mask, msg=msg)
+        assert_masked_ar(ar)    
+        assert_partial_wet(ar.mask)
     except Exception as e:
-        raise TypeError(msg+f'\npassed array does not conform to WSE expectations\n'+e)
+        raise TypeError(msg+f'\npassed array does not conform to WSE expectations\n{e}')
         
     
 def assert_wsh_ar(ar, msg=''):
