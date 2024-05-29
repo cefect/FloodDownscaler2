@@ -31,11 +31,13 @@ contains these cases:
 additional 'phase' parameters are used to allow for intermediate test data
     
 """
-#load the file structure from the test data directory
+#===============================================================================
+# load from directory
+#===============================================================================
 from definitions import test_data_dir
 
 if os.path.exists(test_data_dir):
-    test_data_lib = recursive_file_search(test_data_dir, ['.tif', '.pkl'])
+    test_data_lib = recursive_file_search(test_data_dir, ['.tif', '.pkl', '.gpkg'])
 
 #===============================================================================
 # #add toy data
