@@ -166,7 +166,11 @@ def get_center_latlon(xds):
     return lat[0], lon[0]
 
 
-def wse_to_wsh_xr(dem_xr, wse_xr):
+def wse_to_wsh_xr(dem_xr, wse_xr, log=None):
+    plog = lambda msg: None if log is None else log.debug(msg)
+    
+    log.debug(f'wse_to_wsh_xr on {wse_xr}')
+    
     delta_ar = np.nan_to_num(wse_xr.data - dem_xr.data, 0.0)
     
     wsh_mar = ma.MaskedArray(np.where(delta_ar < 0.0, 0.0, delta_ar), 
@@ -178,7 +182,7 @@ def wse_to_wsh_xr(dem_xr, wse_xr):
     if 'layerName' in wse_xr.attrs:
         wsh_xr.attrs['layerName'] = wse_xr.attrs['layerName'].lower().replace('wse', 'wsh')
         
-    assert_wsh_xr(wsh_xr)
+    assert_wsh_xr(wsh_xr, msg='wse_to_wsh_xr check')
     return wsh_xr
 
 

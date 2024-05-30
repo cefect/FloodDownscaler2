@@ -186,7 +186,10 @@ def assert_wsh_ar(ar, msg=''):
         raise AssertionError(msg+': expected zero minimum, got %.2f'%np.min(ar)) 
     
     if not np.max(ar)>0.0:
-        raise AssertionError(msg+': zero maximum') 
+        raise AssertionError(msg+': zero maximum')
+    
+    if np.max(ar)>1e5:
+        raise AssertionError(msg+'/nexcessive depths: {np.max(ar)}') 
     
     
     
