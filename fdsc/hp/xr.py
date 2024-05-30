@@ -169,7 +169,7 @@ def get_center_latlon(xds):
 def wse_to_wsh_xr(dem_xr, wse_xr, log=None):
     plog = lambda msg: None if log is None else log.debug(msg)
     
-    log.debug(f'wse_to_wsh_xr on {wse_xr}')
+    plog(f'wse_to_wsh_xr on {wse_xr}')
     
     delta_ar = np.nan_to_num(wse_xr.data - dem_xr.data, 0.0)
     

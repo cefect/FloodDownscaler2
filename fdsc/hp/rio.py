@@ -83,10 +83,9 @@ def geographic_to_projected(raster_fp, log=None, out_dir=None):
             
             
             
-            
-            
-            
-            
+def get_geotiff_shape(filepath):
+    with rasterio.open(filepath) as src:
+        return (src.height, src.width)  # Return as NumPy array
             
             
             
