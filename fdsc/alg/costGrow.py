@@ -362,6 +362,7 @@ def meters_to_latlon(distance_meters, latitude, longitude, crs="EPSG:4326"):
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 distance_fill='neutral',
+                distance_fill_method='distance_transform_cdt',
                 decay_frac=0.001,
                 dp_coarse_pixel_max=10,
                           
@@ -584,7 +585,8 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     """seems like there should be  away to apply grow_thresh_bar to speed up the distance calcs below""" 
         
     if distance_fill == 'neutral':
-        wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName))
+        wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName),
+                                       method=distance_fill_method)
         
         if debug:
             wse_filled_xr = dataarray_from_masked(ma.MaskedArray(wse_filled_ar), wse_fine_xr2)

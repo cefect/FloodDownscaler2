@@ -5,7 +5,7 @@ Created on May 26, 2024
 '''
 import logging
 import parameters
-from whitebox_tools import WhiteboxTools
+from ...whitebox_tools.whitebox_tools import WhiteboxTools
 wbt = WhiteboxTools()
 
 from definitions import wbt_dir, wrk_dir
