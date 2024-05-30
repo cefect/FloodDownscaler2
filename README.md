@@ -70,7 +70,10 @@ compiled binaries are available [here](https://www.whiteboxgeo.com/download-dire
 This is the preferred method as it provides greater version control. Typically, FloodDownscaler2 project is setup to use whitebox-tools v2.2.0 as a submodule. 
 Typical workflow:
 - clone whitebox-tools into the repo as a submodule and point to the v2.2.0 release tag.
-`git submodule add -b v2.2.0 https://github.com/cefect/whitebox-tools.git`
+```
+git submodule add -b v2.2.0_tweaks https://github.com/cefect/whitebox-tools.git
+git mv whitebox-tools whiteboxtools
+```
 - compile the tools. call the below within the newly cloned submodule folder. this may take a while and requires you to have rust installed (see whitebox-tools documentation for more info)
 `cargo build --release`
 - update paths per the above
