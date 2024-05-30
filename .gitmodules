@@ -1,3 +1,4 @@
 [submodule "whitebox-tools"]
-	path = whitebox-tools
+	path = whiteboxtools
 	url = https://github.com/cefect/whitebox-tools.git
+	branch = v2.2.0_tweaks
