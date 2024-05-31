@@ -75,11 +75,19 @@ def view_web_df(df):
     with NamedTemporaryFile(delete=False, suffix='.html', mode='w') as f:
         #type(f)
         df.to_html(buf=f)
+        print(f.name)
         
     webbrowser.open(f.name)
     
+import threading
+
 def view(df):
-    view_web_df(df)
+    def target():
+        view_web_df(df)
+
+    t = threading.Thread(target=target)
+    t.pydev_do_not_trace = True
+    t.start()
     
   
  
