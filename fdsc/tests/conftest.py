@@ -38,6 +38,8 @@ from definitions import test_data_dir
 
 if os.path.exists(test_data_dir):
     test_data_lib = recursive_file_search(test_data_dir, ['.tif', '.pkl', '.gpkg'])
+else:
+    raise IOError(f'no test data directory found at: {test_data_dir}')
 
 #===============================================================================
 # #add toy data
