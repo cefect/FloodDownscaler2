@@ -8,9 +8,17 @@ Created on May 25, 2024
 #===============================================================================
 # IMPORTS------
 #===============================================================================
-import os, pathlib, pytest, logging, sys, tempfile, pickle, copy
+import os, pathlib, pytest, logging, sys, tempfile, pickle, copy, warnings
 import rioxarray
 from ..hp.dirz import recursive_file_search
+from ..hp.xr import coarsen_dataarray, resample_match_xr, wse_to_wsh_xr, xr_to_GeoTiff
+
+#===============================================================================
+# Parameters-------
+#===============================================================================
+write_to_test_data=True #control for writing test results to test_data_dir
+if write_to_test_data:
+    warnings.warn(f'write_to_test_data=True. test data will be over-written')
 
 #===============================================================================
 # helpers
@@ -109,7 +117,7 @@ def wse_coarse_fp(caseName, phase):
 
 def _get_xr(caseName, phase, dataName):
  
-    assert phase in test_data_lib[caseName], f'missing {caseName}'
+    assert phase in test_data_lib[caseName], f'missing {caseName}.{phase}'
     d = test_data_lib[caseName][phase]
     """
     print(test_data_lib[caseName][phase].keys())
@@ -156,7 +164,56 @@ def wse_coarse_xr(caseName):
 
 
 
+@pytest.fixture(scope='function')
+def dem_coarse_xr(caseName, phase, dem_fine_xr, wse_coarse_xr):
+    
+    d = test_data_lib[caseName][phase]
+    dataName = 'dem_coarse_xr'
+    
+    #===========================================================================
+    # build
+    #===========================================================================
+#===============================================================================
+#     if not dataName in d:    
+#         from analysis.hp.xr import coarsen_dataarray
+# 
+#         d[dataName] = coarsen_dataarray(dem_fine_xr, wse_coarse_xr)
+#  
+#     return copy.deepcopy(test_data_lib[caseName][phase][dataName])
+#===============================================================================
+    
 
+    #return coarsen_dataarray(dem_fine_xr, wse_coarse_xr)
+    return resample_match_xr(dem_fine_xr, wse_coarse_xr)
+
+
+@pytest.fixture(scope='function')
+def wsh_coarse_fp(caseName, wse_coarse_fp, dem_coarse_xr, tmpdir):
+    """ most functions are setup to take WSH.. so we want this as a test endpoint"""
+    assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
+    
+    phase='00_raw'
+    d = test_data_lib[caseName][phase]
+ 
+    dataName = 'wsh_coarse'
+    if not dataName in d:
+        #===========================================================================
+        # create WSH data
+        #===========================================================================
+     
+        wse_xr = _geoTiff_to_xr(wse_coarse_fp) 
+        
+        #from FloodDownscaler2.fdsc.hp.xr import wse_to_wsh_xr, xr_to_GeoTiff
+        
+        wsh_xr = wse_to_wsh_xr(dem_coarse_xr, wse_xr)
+        
+        #===========================================================================
+        # write
+        #===========================================================================
+        
+        d[dataName] = xr_to_GeoTiff(wsh_xr, os.path.join(tmpdir, 'wsh_coarse.tif'), compress=None)
+        
+    return test_data_lib[caseName][phase][dataName]
 
 
 

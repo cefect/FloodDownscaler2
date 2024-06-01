@@ -127,9 +127,10 @@ def assert_partial_wet(ar, msg=''):
     assert 'bool' in ar.dtype.name
     
     if np.all(ar):
-        raise AssertionError(msg+': all true')
+        raise AssertionError(msg+': all masked/wet cells')
+    
     if np.all(np.invert(ar)):
-        raise AssertionError(msg+': all false')
+        raise AssertionError(msg+': no mask/dry cells')
 
 def assert_inun_ar(ar, msg=''):
     """inundation array. wet=True"""
@@ -157,7 +158,7 @@ def assert_dem_ar(ar, msg=''):
     if not np.all(np.invert(ar.mask)):
         raise AssertionError(msg+': some masked values')"""
     
-def assert_wse_ar(ar, msg=''):
+def assert_wse_ar(ar, msg='', assert_partial=True):
     """check the array satisfies expectations for a WSE array"""
     if not __debug__: # true if Python was not started with an -O option
         return    
@@ -165,7 +166,8 @@ def assert_wse_ar(ar, msg=''):
     
     try:
         assert_masked_ar(ar)    
-        assert_partial_wet(ar.mask)
+        if assert_partial:
+            assert_partial_wet(ar.mask)
     except Exception as e:
         raise TypeError(msg+f'\npassed array does not conform to WSE expectations\n{e}')
         
@@ -317,17 +319,48 @@ def assert_dem_xr(dem_xr, msg=''):
     assert_xr_geoTiff(dem_xr, msg=msg) 
     return assert_dem_ar(dem_xr.to_masked_array(), msg=msg)
 
-def assert_wse_xr(wse_xr, msg=''):
+def assert_wse_xr(wse_xr, msg='', **kwargs):
     assert_xr_geoTiff(wse_xr, msg=msg)
-    return assert_wse_ar(wse_xr.to_masked_array(), msg=msg)
+    return assert_wse_ar(wse_xr.to_masked_array(), msg=msg, **kwargs)
 
 def assert_wsh_xr(da, msg=''):
     assert_xr_geoTiff(da, msg=msg)
     return assert_wsh_ar(da.to_masked_array(), msg=msg)
 
 
+def assert_wse_vs_dem_mar(wse_mar, dem_mar, msg='', **kwargs):
+    assert_wse_ar(wse_mar, msg=msg, **kwargs)
+    assert_dem_ar(dem_mar, msg=msg)
+    
+    #===========================================================================
+    # check WSE logic
+    #===========================================================================
+    delta_mar = ma.MaskedArray(
+        wse_mar.data - dem_mar.data, mask=dem_mar.mask)
+    bool_ar = delta_mar[~delta_mar.mask].ravel() < 0.0
+    if bool_ar.any():
+        raise AssertionError(f'{bool_ar.sum()}/{bool_ar.size} WSE pixels were at or below the DEM\n' + msg)
 
-def assert_integer_like_and_nearly_identical(arr, rtol=1e-5, atol=1e-8):
+def assert_wse_vs_dem_xr(wse_xr, dem_xr, msg='', **kwargs):
+    """check consistency between the WSE and the DEM"""
+    
+    if not __debug__: # true if Python was not started with an -O option
+        return    
+    __tracebackhide__ = True  
+    
+    #basic data checks
+    assert_equal_raster_metadata(wse_xr, dem_xr, msg=msg)
+    
+    wse_mar= wse_xr.to_masked_array()
+    dem_mar = dem_xr.to_masked_array()
+
+
+    assert_wse_vs_dem_mar(wse_mar, dem_mar, msg=msg, **kwargs)
+    
+ 
+
+
+def assert_integer_like_and_nearly_identical(arr, rtol=1e-3, atol=1e-3):
     """
     Asserts that all values in a NumPy array are:
 

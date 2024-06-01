@@ -8,8 +8,9 @@ import xarray as xr
 import numpy as np
 import numpy.ma as ma
 from rasterio.warp import transform
+from rasterio.enums import Resampling
 
-from ..assertions import assert_xr_geoTiff, assert_wsh_xr
+from ..assertions import *
 
 def xr_to_GeoTiff(da, raster_fp, log=None, compress='LZW'): 
 
@@ -52,14 +53,15 @@ def xr_to_GeoTiff(da, raster_fp, log=None, compress='LZW'):
     
     return raster_fp
 
-def resample_match_xr(da, target_da, **kwargs):
+def resample_match_xr(da, target_da, resampling=Resampling.nearest,
+                      **kwargs):
     """resampling with better treatment for masks"""
     
     
     #wse_coarse_xr.fillna(0.0).interp_like(dem_fine_xr, method='linear', assume_sorted=True, kwargs={'fill_value':'extrapolate'})
     nodata = da.rio.nodata
     da1 =  da.fillna(nodata).rio.reproject_match(
-        target_da, nodata=nodata, **kwargs)    
+        target_da, nodata=nodata, resampling=resampling, **kwargs)    
     return da1.where(da1!=nodata, np.nan)
 
 
@@ -84,12 +86,17 @@ def dataarray_from_masked(masked_array, target_dataarray):
 
     if not isinstance(target_dataarray, xr.DataArray):
         raise TypeError("Target must be an xarray DataArray.")
+    
+    assert 'float' in masked_array.data.dtype.name, f'got bad dtype: {masked_array.data.dtype.name}'
 
     # Get the nodata value from the target DataArray
     nodata = target_dataarray.rio.nodata
 
     # Replace masked values with nodata
-    filled_array = ma.filled(masked_array, fill_value=np.nan)
+    try:
+        filled_array = ma.filled(masked_array, fill_value=np.nan)
+    except Exception as e:
+        raise IOError(e)
 
     # Create a new DataArray
     new_dataarray = xr.DataArray(
@@ -166,15 +173,60 @@ def get_center_latlon(xds):
     return lat[0], lon[0]
 
 
-def wse_to_wsh_xr(dem_xr, wse_xr, log=None):
+def wse_to_wsh_xr(dem_xr, wse_xr, log=None, assert_partial=True, allow_low_wse=False, debug=True):
+    """convert a WSE to a WSH with the DEM
+    
+    
+    Params
+    -------------
+    allow_low_wse: bool
+        allow wse and dem grids where WSE<DEM to pass (other wise an exception is thrown)
+    
+    assert_partial: bool, default True
+        check that the WSE grid is partially wet
+    
+    """
     plog = lambda msg: None if log is None else log.debug(msg)
     
-    plog(f'wse_to_wsh_xr on {wse_xr}')
+    plog(f'wse_to_wsh_xr on {wse_xr.shape}')    
     
-    delta_ar = np.nan_to_num(wse_xr.data - dem_xr.data, 0.0)
+    wse_mar= wse_xr.to_masked_array()
+    dem_mar = dem_xr.to_masked_array()
     
-    wsh_mar = ma.MaskedArray(np.where(delta_ar < 0.0, 0.0, delta_ar), 
-        mask=dem_xr.to_masked_array().mask, #mask where DEM is masked
+    #===========================================================================
+    # precheck
+    #===========================================================================
+    if debug:
+        msg = 'wse_to_wsh_xr precheck'
+        assert_equal_raster_metadata(wse_xr, dem_xr, msg=msg)
+        assert_wse_ar(wse_mar, msg=msg, assert_partial=assert_partial)
+        assert_dem_ar(dem_mar, msg=msg)
+        
+    
+    #delta_ar = np.nan_to_num(wse_mar.data - dem_mar.data, 0.0)
+    delta_mar = ma.MaskedArray(
+        wse_mar.data - dem_mar.data, mask=dem_mar.mask
+        )
+        
+    
+    #assert_wse_vs_dem(wse_xr, dem_xr, msg='wse to wsh precheck', assert_partial=assert_partial)
+    #===========================================================================
+    # check if WSE values were below the DEM
+    #===========================================================================
+    bool_ar = delta_mar[~delta_mar.mask].ravel()>0.0
+    if not bool_ar.all():
+        msg = f'{bool_ar.sum()}/{bool_ar.size} WSE pixels were at or below the DEM'
+        if allow_low_wse:
+            warnings.warn(msg)
+        else:
+            raise AssertionError(msg)
+    
+ 
+    #===========================================================================
+    # build WSH
+    #===========================================================================
+    wsh_mar = ma.MaskedArray(np.where(delta_mar < 0.0, 0.0, delta_mar), 
+        mask=dem_mar.mask, #mask where DEM is masked
         )
  
     wsh_xr = dataarray_from_masked(wsh_mar, dem_xr)
@@ -186,7 +238,42 @@ def wse_to_wsh_xr(dem_xr, wse_xr, log=None):
     return wsh_xr
 
 
+def coarsen_dataarray(da, target_da, log=None, boundary='exact'):
+    """coarsen with excplicit nodata handling"""
+    plog = lambda msg: None if log is None else log.debug(msg)
+    
+    plog(f'coarsen_dataarray from {da.shape} to {target_da.shape}')
+    assert_xr_geoTiff(da, msg='raw')
+    assert_xr_geoTiff(target_da, msg='target')
+    
+    
+    # Get the nodata value
+    nodata_value = da.rio.nodata
 
+    # Create a mask where the data is not equal to the nodata value
+ 
+    # Apply the mask to the DataArray to create a masked array
+    masked_da = da.where(da != nodata_value)
+
+    # Calculate the coarsening factors for each dimension
+    factors = [int(old / new) for old, new in zip(masked_da.shape, target_da.shape)]
+
+    # Create a dictionary for the coarsen method
+    coarsen_dict = {dim: factor for dim, factor in zip(masked_da.dims, factors)}
+
+    # Perform the coarsening operation on the masked array
+    coarsened_da = masked_da.coarsen(coarsen_dict).mean()
+
+    # Convert the masked array back to an unmasked array by replacing np.nan with the nodata value
+    coarsened_da = coarsened_da.fillna(nodata_value)
+    
+    #snap it back onto the reference
+    da1 = coarsened_da.rio.reproject_match(target_da)
+    #da1 = reproject_to_match(coarsened_da, target_da)
+ 
+    assert_equal_raster_metadata(da1, target_da, msg='coarsen result')
+
+    return da1
 
 
 
