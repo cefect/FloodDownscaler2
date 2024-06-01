@@ -19,7 +19,8 @@ import skimage.graph
 from parameters import today_str
 from ..hp.logr import get_new_file_logger, get_log_stream
 from ..hp.xr import (
-    resample_match_xr, dataarray_from_masked, xr_to_GeoTiff, approximate_resolution_meters
+    resample_match_xr, dataarray_from_masked, xr_to_GeoTiff, approximate_resolution_meters,
+    wse_to_wsh_xr
     )
 from ..assertions import *
 
@@ -363,6 +364,250 @@ def meters_to_latlon(distance_meters, latitude, longitude, crs="EPSG:4326"):
 #===============================================================================
 # RUNNERS------
 #===============================================================================
+def downscale_pluvial_costGrow_xr(
+        dem_fine_xr, wse_coarse_xr,
+        
+        
+        wsh_coarse_thresh=0.1,
+        
+        
+        dem_coarse_xr=None,
+        wsh_coarse_xr=None,
+        
+        logger=None,
+        #write_meta=True,
+        debug=__debug__,
+        out_dir=None,  
+        
+        **kwargs):
+    """wraper for pluvial pre/post filtering
+    
+    here we remove small depths, then run teh downscaler, then add the small depths back
+    
+    three options for establishing the pre-filter are available (in order of preference)
+    
+        provide the coarse WSH (wsh_coarse_xr not None)
+            threshold-based mask is computed directly from the WSH 
+        provide the coarse DEM (wsh_coarse_xr is None and dem_coarse_xr not None)
+            deltas are computed from WSE_coarse - DEM_coarse 
+            and threshold-based mask is computed from delta
+        extrapolate coarse depths from coarse WSE
+            first the coarse DEM is approximated with a minimum resample
+            then follows as in above
+            
+            note this requires a much higher wsh_coarse_thresh to be roughly equivalent to the other options
+        
+    
+    
+    
+    Params
+    ---------------
+    wsh_coarse_thresh: float
+        for pluvial=True, water depth threshold for pre/post filter
+        
+    dem_coarse_xr: xr.DataArray, optional
+        used to overr-ride filter calculation for pluvial=True
+    """
+    
+    #=======================================================================
+    # defaults
+    #=======================================================================
+    log = logger.getChild('pluvial')
+    
+ 
+    assert_partial=False #pluvial WSEs can be all wet
+    #===========================================================================
+    # pre-filter-------
+    #===========================================================================
+    
+    
+    if wsh_coarse_thresh<0.0:
+        raise IOError(wsh_coarse_thresh)
+    elif wsh_coarse_thresh==0.0:
+        assert wse_coarse_xr.isnull().any(), 'must pass wsh_coarse_thresh>0.0 for all wet wse'
+        wse_coarse_xr1 = wse_coarse_xr
+    else:
+        
+        #=======================================================================
+        # setup
+        #=======================================================================
+        phaseName='00_01_pluvialPre'
+        log.debug(f'pre-filtering w/ wsh_coarse_thresh={wsh_coarse_thresh}')
+        
+        wse_mar = wse_coarse_xr.to_masked_array()
+        #=======================================================================
+        # dem-based filter
+        #=======================================================================
+        if wsh_coarse_xr is None:
+            log.debug(f'extrapolating coarse {phaseName} deltas from WSE')
+            if dem_coarse_xr is None:
+                #get a lower-bound DEM to ensure we are never above teh WSE
+                
+                log.debug('constructing coarse DEM from fine w/ Resampling.min')
+                
+                """need to use min here.. even though that really limits the filter capacity
+                otherwise, we get bad filters in steep terrain
+                """
+                dem_coarse_xr = resample_match_xr(dem_fine_xr,wse_coarse_xr,resampling=Resampling.min)
+            
+            dem_mar = dem_coarse_xr.to_masked_array()
+            domain_coarse_mask = dem_mar.mask
+            
+            #===========================================================================
+            # precheck
+            #===========================================================================
+            if debug:
+                out_dir = _get_od(out_dir)
+                msg = phaseName+' precheck' 
+                assert_wse_ar(wse_mar, msg=msg, assert_partial=assert_partial)
+                assert_dem_ar(dem_mar, msg=msg)
+                
+                try:
+                    assert_wse_vs_dem_mar(wse_mar, dem_mar, msg=msg, assert_partial=assert_partial)
+                except Exception as e:
+                    log.warning(f'DEM and WSE may be inconsistent\n    {e}')
+                    
+                xr_to_GeoTiff(dem_coarse_xr, os.path.join(out_dir, phaseName+'_dem_coarse_min.tif'), log=log)
+                
+    
+                
+            #=======================================================================
+            # get filter mask
+            #=======================================================================
+            delta_ar = wse_mar.data - dem_mar.data
+            
+        #=======================================================================
+        # wsh-based filter
+        #=======================================================================
+        else:
+            log.debug(f'using passed WSH_coarse for deltas')
+            wsh_mar = wsh_coarse_xr.to_masked_array()
+            delta_ar = wsh_mar.data
+            domain_coarse_mask = wsh_mar.mask
+        
+        #=======================================================================
+        # assemble filter layer
+        #=======================================================================
+        #boolean of pixels to remove (does not include domain nulls)
+        pluvial_remove_bool_ar = np.logical_and(
+            delta_ar<=wsh_coarse_thresh, #small depths
+            np.logical_and(
+                np.invert(wse_mar.mask), #wet
+                np.invert(domain_coarse_mask) #inside the domain            
+            ))
+        
+        delta_coarse_pluvial_remove_xr = dataarray_from_masked(
+            ma.MaskedArray(delta_ar, mask=np.invert(pluvial_remove_bool_ar)),
+                                  wse_coarse_xr)
+        
+        
+        
+        if debug:
+            assert_partial_wet(pluvial_remove_bool_ar, msg=f'pluvial pre-filter mask w/ wsh_coarse_thresh={wsh_coarse_thresh}')
+        
+        #=======================================================================
+        # apply m ask
+        #=======================================================================
+ 
+        wse_coarse_xr1 = wse_coarse_xr.where(~pluvial_remove_bool_ar, np.nan)
+        log.debug(f'prefiltered {pluvial_remove_bool_ar.sum()}/{pluvial_remove_bool_ar.size} pixels as dry on wse_coarse w/ wsh_coarse_thresh')
+        
+        
+        #=======================================================================
+        # wrap
+        #=======================================================================
+        if debug:            
+ 
+            xr_to_GeoTiff(delta_coarse_pluvial_remove_xr, 
+                          os.path.join(out_dir, phaseName+'_delta_coarse_pluvial_remove_xr.tif'), log=log)
+ 
+ 
+            assert_wse_xr(wse_coarse_xr1, msg='post wsh_coarse_thresh ' + phaseName)
+            
+    #===========================================================================
+    # apply downscaler--------
+    #===========================================================================
+    wse_fine_xr, meta_d =  downscale_costGrow_xr(
+        dem_fine_xr, wse_coarse_xr1,
+        logger=logger, debug=debug, out_dir=out_dir,
+        **kwargs)
+    
+    meta_d.update({'pluvial':True, 'wsh_coarse_thresh':wsh_coarse_thresh})
+    
+    #===========================================================================
+    # post filter-----------
+    #===========================================================================
+    phaseName='99_01_pluvialPost'
+    if not wsh_coarse_thresh==0.0:
+        log.debug(f're-applying dry mask to {wse_fine_xr.shape}')
+        domain_fine_mask = dem_fine_xr.to_masked_array().mask
+        
+        #resample the removed WSH
+        delta_fine_pluvial_reapply_mar = resample_match_xr(delta_coarse_pluvial_remove_xr,dem_fine_xr,resampling=Resampling.nearest).to_masked_array()
+        
+        """need to re-fill wet partials as well"""
+        wse_fine_mar  = wse_fine_xr.to_masked_array()
+        dry_search_domain = np.logical_and(
+            wse_fine_mar.mask, #dry
+            np.invert(domain_fine_mask), #inside the domain
+            )
+        
+        assert_partial_wet(dry_search_domain)
+        
+        """are two phases really necessary? Or can we just fill back with the delta?
+        still some dry holes... I guess I'll pick this up tomorrow
+        """
+        #first fill with the delta fines
+        wse_fine_xr1 = wse_fine_xr.fillna(np.where(dry_search_domain, 
+                                                   delta_fine_pluvial_reapply_mar.filled(fill_value=np.nan) + dem_fine_xr, np.nan))
+        
+        #fill remainder with coarse WSH
+        delta_fine_xr = resample_match_xr(
+            dataarray_from_masked(
+                ma.MaskedArray(
+                    np.where(delta_ar>0, delta_ar, 0.0),
+                        mask=domain_coarse_mask), wse_coarse_xr),
+            dem_fine_xr,resampling=Resampling.nearest)
+         
+        wse_fine_xr2 = wse_fine_xr1.fillna(np.where(dry_search_domain, delta_fine_xr + dem_fine_xr, np.nan))
+        
+ 
+ 
+        
+        if debug:            
+            xr_to_GeoTiff(wse_fine_xr2,os.path.join(out_dir, phaseName+'_wse_fine.tif'), log=log) 
+            assert_wse_xr(wse_fine_xr2, msg=phaseName, assert_partial=False)
+            
+            xr_to_GeoTiff(delta_fine_xr,
+                          os.path.join(out_dir, phaseName+'_delta_fine_reapply.tif'), log=log) 
+            
+            #check mask is correct            
+            assert np.all(np.isnan(wse_fine_xr2.data[domain_fine_mask].ravel())), f'got some reals outside domain'
+            
+            #write the WSH as well
+            xr_to_GeoTiff(
+                wse_to_wsh_xr(dem_fine_xr, wse_fine_xr2, log=log, assert_partial=False, allow_low_wse=True),
+                    os.path.join(out_dir, phaseName+'_wsh_fine.tif'), log=log) 
+            
+            
+    else:
+        wse_fine_xr1=wse_fine_xr
+            
+    #=======================================================================
+    # wrap
+    #=======================================================================
+    meta_d['pluvial_post_wetCnt'] = wse_fine_xr2.notnull().sum().item()
+    
+    log.debug(f'finished pluvial wrapper')
+    
+    return wse_fine_xr2, meta_d
+        
+        
+        
+        
+            
+            
+
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 distance_fill='neutral',
@@ -417,15 +662,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     phaseName = '00_inputs'
     log.debug(phaseName)
     
-    if debug:
-        assert_dem_xr(dem_fine_xr, msg='DEM')
-        assert_wse_xr(wse_coarse_xr, msg='WSE')        
-        assert_equal_extents_xr(dem_fine_xr, wse_coarse_xr, msg='\nraw inputs')
-        
-        out_dir = _get_od(out_dir)
-            
-                            
-        log.debug(f'out_dir set to \n    {out_dir}')
+
         
 
         
@@ -433,9 +670,12 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     # function helpers------
     #===========================================================================
     if debug:
+        out_dir = _get_od(out_dir)
+        log.debug(f'out_dir set to \n    {out_dir}')
+        
         def to_gtiff(da, phaseName, layerName=None):
             
-            
+            assert_xr_geoTiff(da, msg=f'output to_gtiff, {phaseName}.{layerName}')
             
             #output path
             shape_str = _get_zero_padded_shape(da.shape)
@@ -447,7 +687,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
             assert not os.path.exists(ofp), ofp
                 
             #write GeoTiff (for debugging)
-            assert_xr_geoTiff(da, msg=f'output to_gtiff, {phaseName}.{layerName}')
+            
             meta_d[f'{phaseName}_{layerName}'] = xr_to_GeoTiff(da, ofp+'.tif', log=log, compress=None) 
             
             #write pickle (for unit tests) 
@@ -456,7 +696,9 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
             
             
             return ofp + '.tif'
-    
+        
+        
+ 
     
     #===========================================================================
     # setup
@@ -469,6 +711,9 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     if debug:
         to_gtiff(wse_coarse_xr, phaseName)
         to_gtiff(dem_fine_xr, phaseName)
+        assert_dem_xr(dem_fine_xr, msg='DEM')
+        assert_wse_xr(wse_coarse_xr, msg='WSE')        
+        assert_equal_extents_xr(dem_fine_xr, wse_coarse_xr, msg='\nraw inputs')    
     
     #get rescaling value
     shape_rat_t = shape_ratio(dem_fine_xr, wse_coarse_xr) 

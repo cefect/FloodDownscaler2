@@ -20,6 +20,7 @@ import rioxarray
 from parameters import today_str
 from .hp.logr import get_new_file_logger, get_log_stream
 from .hp.rio import geographic_to_projected
+from .hp.xr import xr_to_GeoTiff
 from .assertions import *
 
 
@@ -27,7 +28,7 @@ from .assertions import *
 # HELPERS--------
 #===============================================================================
 def _geoTiff_to_xr(fp, nodata=-9999): 
-    return rioxarray.open_rasterio(fp,masked=True).squeeze().rio.write_nodata(nodata)
+    return rioxarray.open_rasterio(fp,masked=True).squeeze().compute().rio.write_nodata(nodata)
 
  
 
@@ -39,12 +40,13 @@ def downscale_wse_raster(
     wse_coarse_fp,            
     
     method='CostGrow', 
-    params=None,
+    pluvial=False, wsh_coarse_fp=None,
+    #params=None,
     write_meta=True,
     
-    out_dir=None,
+    out_dir=None, ofp=None,
     logger=None,
- 
+    
     
     **kwargs):
     """dowscale a coarse WSE grid using a fine DEM from raster files
@@ -61,8 +63,7 @@ def downscale_wse_raster(
         downsccaling method to apply
             CostGrow                
         
-    params: dict
-        key word arguments to pass to downscaling method
+ 
         
     write_meta: bool
         flag to write metadata
@@ -84,7 +85,7 @@ def downscale_wse_raster(
                     logger=get_log_stream(level = logging.DEBUG)
                     )
         
-    
+    log=logger.getChild('main')
     #===========================================================================
     # pre-process
     #===========================================================================
@@ -108,14 +109,30 @@ def downscale_wse_raster(
     # execute
     #===========================================================================
     if method=='CostGrow':
-        from fdsc.alg.costGrow import downscale_costGrow_xr as func
+        if not pluvial:
+            from fdsc.alg.costGrow import downscale_costGrow_xr as func
+        else:
+            from fdsc.alg.costGrow import downscale_pluvial_costGrow_xr as func
+            
+            if not wsh_coarse_fp is None:
+                log.debug(f'loading wsh_coarse_xr from \n    {wsh_coarse_fp}')
+                kwargs['wsh_coarse_xr'] = _geoTiff_to_xr(wsh_coarse_fp)
         
     else:
         raise KeyError(method)
     
     
-    wse_fine_xr, meta_d = func(dem_fine_xr, wse_coarse_xr,logger=logger,
-                               write_meta=write_meta, out_dir=out_dir, **params)
+    wse_fine_xr, meta_d =  func(dem_fine_xr, wse_coarse_xr,logger=logger,
+                               write_meta=write_meta, out_dir=out_dir, **kwargs)
+    
+    #===========================================================================
+    # wrap
+    #===========================================================================
+    if ofp is None:
+        ofp = os.path.join(out_dir, f'wse_downscaled_{method}.tif')
+        xr_to_GeoTiff(wse_fine_xr, ofp, log=log)
+        
+    return ofp, meta_d
     
     
  
@@ -149,4 +166,4 @@ if __name__ == "__main__":
             k = None
 
  
-    downscale(args.dem_fp, args.wse_fp, method=args.method, write_meta=args.write_meta, out_dir=args.out_dir, **kwargs)
+    downscale_wse_raster(args.dem_fp, args.wse_fp, method=args.method, write_meta=args.write_meta, out_dir=args.out_dir, **kwargs)
