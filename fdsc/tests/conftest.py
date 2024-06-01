@@ -72,7 +72,7 @@ test_data_lib.update(toy_test_data_lib)
 #===============================================================================
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope='function')
 def logger():
     logging.basicConfig(
                 #filename='xCurve.log', #basicConfig can only do file or stream
@@ -84,7 +84,7 @@ def logger():
                 )
     
     #get a new logger and lower it to avoid messing with dependencies
-    log = logging.getLogger('t')
+    log = logging.getLogger(str(os.getpid()))
     log.setLevel(logging.DEBUG)
     
     
