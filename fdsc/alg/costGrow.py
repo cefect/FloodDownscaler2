@@ -198,7 +198,8 @@ def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
     Fills masked values in a 2D array using cost-distance weighted nearest neighbor interpolation.
     """
 
-    
+    current_wdir = os.getcwd() #WBT moves htis
+    restore_cwd = lambda: os.chdir(current_wdir)
     out_dir = _get_od(out_dir)
     
     to_gtif = lambda da, fn: xr_to_GeoTiff(da, os.path.join(out_dir, fn), log)
@@ -239,7 +240,9 @@ def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
                              backlink_fp) == 0:
         raise IOError('cost_distance')
     
-    assert os.path.exists(backlink_fp)
+    restore_cwd()
+    assert current_wdir==os.getcwd()
+ 
     #=======================================================================
     # costAllocation
     #=======================================================================
@@ -248,6 +251,7 @@ def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
     if not wbt.cost_allocation(wse_fp, backlink_fp, costAlloc_fp) == 0:
         raise IOError('wbt.cost_allocation')
     
+    restore_cwd()
     log.debug(f'wrote to \n    {costAlloc_fp}')
     #===========================================================================
     # back to Xarray
