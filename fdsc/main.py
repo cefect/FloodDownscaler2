@@ -18,6 +18,7 @@ import os, argparse, logging
 import rioxarray
 
 from parameters import today_str
+from .coms import set_da_layerNames
 from .hp.logr import get_new_file_logger, get_log_stream
 from .hp.rio import geographic_to_projected
 from .hp.xr import xr_to_GeoTiff
@@ -40,7 +41,7 @@ def downscale_wse_raster(
     wse_coarse_fp,            
     
     method='CostGrow', 
-    pluvial=False, wsh_coarse_fp=None,
+    pluvial=False, wsh_coarse_fp=None, dem_coarse_fp=None,
     #params=None,
     write_meta=True,
     
@@ -96,32 +97,54 @@ def downscale_wse_raster(
     #===========================================================================
     # load to Xarray
     #===========================================================================
-    dem_fine_xr = _geoTiff_to_xr(dem_fine_fp)
-    assert_xr_geoTiff(dem_fine_xr)
-        
-    wse_coarse_xr = _geoTiff_to_xr(wse_coarse_fp)
-    assert_xr_geoTiff(wse_coarse_xr)
+    dem_fine_xr = _geoTiff_to_xr(dem_fine_fp)        
+    wse_coarse_xr = _geoTiff_to_xr(wse_coarse_fp)    
     
+    #add layerNames and do some checks
+    set_da_layerNames({'dem_fine':dem_fine_xr,'wse_coarse': wse_coarse_xr})
     
+ 
     
     logger.info(f'enahcing resolution from {wse_coarse_xr.shape} to {dem_fine_xr.shape}')
     #===========================================================================
-    # execute
+    # retrieve WSE projection method
     #===========================================================================
+    
+    
+    
     if method=='CostGrow':
-        if not pluvial:
-            from fdsc.alg.costGrow import downscale_costGrow_xr as func
-        else:
-            from fdsc.alg.costGrow import downscale_pluvial_costGrow_xr as func
-            
-            if not wsh_coarse_fp is None:
-                log.debug(f'loading wsh_coarse_xr from \n    {wsh_coarse_fp}')
-                kwargs['wsh_coarse_xr'] = _geoTiff_to_xr(wsh_coarse_fp)
+        from fdsc.alg.costGrow import downscale_costGrow_xr as wse_proj_func
         
     else:
         raise KeyError(method)
     
+    #===========================================================================
+    # set up pluvial wrapper
+    #===========================================================================
+    if not pluvial:
+        func = wse_proj_func
+    else:
+        log.info('preparing pluvial downscaling')
+        from fdsc.alg.pluvial import downscale_pluvial_xr as func
+        
+        #load the coarse WSH if present
+        for layerName, fp in {
+            'wsh_coarse':wsh_coarse_fp, 'dem_coarse':dem_coarse_fp,
+            }.items():
+        
+            if not fp is None:
+                log.debug(f'loading {layerName} from \n    {fp}')                
+                da =  _geoTiff_to_xr(fp)                
+                set_da_layerNames({layerName:da})
+                kwargs[layerName+'_xr'] = da
+ 
+        #add the wse projection to teh kwargs
+        kwargs['wse_proj_func'] = wse_proj_func
+ 
     
+    #===========================================================================
+    # execute
+    #===========================================================================
     wse_fine_xr, meta_d =  func(dem_fine_xr, wse_coarse_xr,logger=logger,
                                write_meta=write_meta, out_dir=out_dir, **kwargs)
     

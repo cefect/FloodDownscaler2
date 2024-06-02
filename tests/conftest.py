@@ -21,11 +21,46 @@ if write_to_test_data:
     warnings.warn(f'write_to_test_data=True. test data will be over-written')
 
 #===============================================================================
-# helpers
+# helpers---------
 #===============================================================================
 
 def _geoTiff_to_xr(fp): 
     return rioxarray.open_rasterio(fp,masked=False).squeeze().rio.write_nodata(-9999)
+
+def _get_xr(caseName, phase, dataName):
+ 
+    assert phase in test_data_lib[caseName], f'missing {caseName}.{phase}'
+    d = test_data_lib[caseName][phase]
+    """
+    print(test_data_lib[caseName][phase].keys())
+    """
+    
+    """switched to always load to workaorund deepcopy
+    #load from file once
+    if not dataName in d:"""
+        
+    k2 = dataName.replace('_xr', '')
+    
+    if not k2 in d:
+        raise KeyError(k2)
+    
+    fp = d[k2]
+    
+    print(f'loading \'{dataName}\' from pickle file\n    {fp}')
+    with open(fp, "rb") as f:
+        da = pickle.load(f)
+ 
+    da = da.rio.write_nodata(-9999)    
+        
+    """deepcopy is not copying the rio data
+    #check it
+    da = copy.deepcopy(test_data_lib[caseName][phase][dataName])"""
+    from ..fdsc.assertions import assert_xr_geoTiff        
+    assert_xr_geoTiff(da, msg='%s.%s.%s'%(caseName, phase, dataName))
+    
+        
+    return da
+
 
 #===============================================================================
 # TEST_DATA------------
@@ -115,39 +150,12 @@ def wse_coarse_fp(caseName, phase):
     return copy.deepcopy(test_data_lib[caseName][phase]['wse_coarse'])
 
 
-def _get_xr(caseName, phase, dataName):
- 
-    assert phase in test_data_lib[caseName], f'missing {caseName}.{phase}'
-    d = test_data_lib[caseName][phase]
-    """
-    print(test_data_lib[caseName][phase].keys())
-    """
-    
-    """switched to always load to workaorund deepcopy
-    #load from file once
-    if not dataName in d:"""
-        
-    k2 = dataName.replace('_xr', '')
-    
-    if not k2 in d:
-        raise KeyError(k2)
-    
-    fp = d[k2]
-    
-    print(f'loading \'{dataName}\' from pickle file\n    {fp}')
-    with open(fp, "rb") as f:
-        da = pickle.load(f)
- 
-            
-            
-    """deepcopy is not copying the rio data
-    #check it
-    da = copy.deepcopy(test_data_lib[caseName][phase][dataName])"""
-    from ..fdsc.assertions import assert_xr_geoTiff        
-    assert_xr_geoTiff(da, msg='%s.%s.%s'%(caseName, phase, dataName))
-    
-        
-    return da
+@pytest.fixture(scope='function')
+def dem_coarse_fp(caseName, phase):
+    assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
+    return copy.deepcopy(test_data_lib[caseName][phase]['dem_coarse'])
+
+
 
 @pytest.fixture(scope='function')
 def wse_fine_xr(caseName, phase):
@@ -214,6 +222,7 @@ def wsh_coarse_fp(caseName, wse_coarse_fp, dem_coarse_xr, tmpdir):
         d[dataName] = xr_to_GeoTiff(wsh_xr, os.path.join(tmpdir, 'wsh_coarse.tif'), compress=None)
         
     return test_data_lib[caseName][phase][dataName]
+
 
 
 

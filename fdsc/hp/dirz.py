@@ -3,7 +3,7 @@ Created on May 25, 2024
 
 @author: cef
 '''
-import os
+import os, tempfile
 
 
 def recursive_file_search(root_dir, search_extension_l):
@@ -40,6 +40,13 @@ def recursive_file_search(root_dir, search_extension_l):
                 result[fn] = item_path  # Store full path of matching file
 
     return result
+
+def get_od(out_dir):
+    if out_dir is None:
+        out_dir = tempfile.mkdtemp()
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)        
+    return out_dir
 
 #===============================================================================
 # def get_filepaths_from_structure(test_data_dir):

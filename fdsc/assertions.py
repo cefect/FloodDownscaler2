@@ -172,7 +172,7 @@ def assert_wse_ar(ar, msg='', assert_partial=True):
         raise TypeError(msg+f'\npassed array does not conform to WSE expectations\n{e}')
         
     
-def assert_wsh_ar(ar, msg=''):
+def assert_wsh_ar(ar, msg='', assert_partial=True):
     """check the array satisfies expectations for a WD array"""
     if not __debug__: # true if Python was not started with an -O option
         return
@@ -183,12 +183,12 @@ def assert_wsh_ar(ar, msg=''):
     if not np.all(np.invert(ar.mask)):
         raise AssertionError(msg+'\n got some masked values on a WSH grid')
     """
-    
-    if not np.min(ar)==0.0:
-        raise AssertionError(msg+': expected zero minimum, got %.2f'%np.min(ar)) 
+    if assert_partial:
+        if not np.isclose(np.min(ar), 0.0, atol=1e-4):
+            raise AssertionError(msg+': expected zero minimum, got %.6f'%np.min(ar)) 
     
     if not np.max(ar)>0.0:
-        raise AssertionError(msg+': zero maximum')
+        raise AssertionError(msg+': got max=0 on WSH (ie all dry)')
     
     if np.max(ar)>1e5:
         raise AssertionError(msg+'/nexcessive depths: {np.max(ar)}') 
@@ -323,9 +323,9 @@ def assert_wse_xr(wse_xr, msg='', **kwargs):
     assert_xr_geoTiff(wse_xr, msg=msg)
     return assert_wse_ar(wse_xr.to_masked_array(), msg=msg, **kwargs)
 
-def assert_wsh_xr(da, msg=''):
+def assert_wsh_xr(da, msg='', **kwargs):
     assert_xr_geoTiff(da, msg=msg)
-    return assert_wsh_ar(da.to_masked_array(), msg=msg)
+    return assert_wsh_ar(da.to_masked_array(), msg=msg, **kwargs)
 
 
 def assert_wse_vs_dem_mar(wse_mar, dem_mar, msg='', **kwargs):

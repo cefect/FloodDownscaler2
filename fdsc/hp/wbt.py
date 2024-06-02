@@ -4,13 +4,15 @@ Created on May 26, 2024
 @author: cef
 '''
 
-import sys, os
-print(sys.executable)
-print(f'sys.version: {sys.version}')
-print(f'os.getcwd(): {os.getcwd()}')
-print('sys.path\n' + '\n'.join(sys.path))
-print('PYTHONPATH')
-if 'PYTHONPATH' in os.environ: print('\n'.join(os.environ['PYTHONPATH'].split(';')))
+#===============================================================================
+# import sys, os
+# print(sys.executable)
+# print(f'sys.version: {sys.version}')
+# print(f'os.getcwd(): {os.getcwd()}')
+# print('sys.path\n' + '\n'.join(sys.path))
+# print('PYTHONPATH')
+# if 'PYTHONPATH' in os.environ: print('\n'.join(os.environ['PYTHONPATH'].split(';')))
+#===============================================================================
 
 
 import logging, os

@@ -7,16 +7,17 @@ Created on May 25, 2024
 #===============================================================================
 # imports----------
 #===============================================================================
-import os, argparse, logging, datetime, tempfile, pickle
+import os, argparse, logging, datetime, tempfile, pickle, copy
 import rioxarray
 from rasterio.enums import Resampling
 from tqdm.auto import tqdm
 
 import scipy.ndimage 
 import skimage.graph
-#from osgeo import gdal
+from osgeo import gdal, gdal_array
 
 from parameters import today_str
+from ..hp.dirz import get_od
 from ..hp.logr import get_new_file_logger, get_log_stream
 from ..hp.xr import (
     resample_match_xr, dataarray_from_masked, xr_to_GeoTiff, approximate_resolution_meters,
@@ -24,20 +25,19 @@ from ..hp.xr import (
     )
 from ..assertions import *
 
-from .coms import shape_ratio
+from ..coms import shape_ratio, set_da_layerNames
+
+
+import geopandas as gpd
+from shapely.geometry import Point, LineString
+import pyproj
 
 #===============================================================================
 # HELPERS------
 #===============================================================================
 
 
-def _get_od(out_dir):
-    if out_dir is None:
-        out_dir = tempfile.mkdtemp()
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
-        
-    return out_dir
+
         
         
 def _write_to_pick(data, fp, log=None):
@@ -83,7 +83,8 @@ def _get_zero_padded_shape(shape):
 
 
 def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=None,
-                                cd_backend='wbt',out_dir=None, **kwargs
+                                cd_backend='wbt',out_dir=None,m_to_rad=None, 
+                                **kwargs
                                 ):
     
  
@@ -111,6 +112,10 @@ def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=Non
     cost_xr = xr.where(delta_xr < 0, 0.0, delta_xr).fillna(999).round(1)
     cost_xr.rio.write_crs(dem_fine_xr.rio.crs, inplace=True) #not sure where this got lost
     
+    if m_to_rad:
+        raise IOError('dome')
+        cost_xr
+    
     #===========================================================================
     # #impute w/ cost
     #===========================================================================
@@ -126,7 +131,7 @@ def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=Non
         #needs geospatial data
         
         wse_filled_xr = _distance_fill_cost_wbt(wse_fine_xr, cost_xr, log=log.getChild(cd_backend), 
-                        out_dir = os.path.join(_get_od(out_dir), 'wbt'), **kwargs)
+                        out_dir = os.path.join(get_od(out_dir), 'wbt'), **kwargs)
     else:
         raise KeyError(cd_backend)
  
@@ -201,7 +206,7 @@ def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
 
     current_wdir = os.getcwd() #WBT moves htis
     restore_cwd = lambda: os.chdir(current_wdir)
-    out_dir = _get_od(out_dir)
+    out_dir = get_od(out_dir)
     
     to_gtif = lambda da, fn: xr_to_GeoTiff(da, os.path.join(out_dir, fn), log)
     
@@ -259,7 +264,7 @@ def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
     #===========================================================================
     load_xr = lambda x: rioxarray.open_rasterio(x,masked=False).squeeze().rio.write_nodata(-9999)
     
-    wse_filled_xr = load_xr(costAlloc_fp)
+    wse_filled_xr = load_xr(costAlloc_fp) - add_increment
     wse_filled_xr.attrs = wse_xr.attrs.copy()
     
     log.debug('finished')
@@ -322,11 +327,9 @@ def _distance_fill(mar,
     return filled_ar
 
 
-import geopandas as gpd
-from shapely.geometry import Point, LineString
-import pyproj
 
-def meters_to_latlon(distance_meters, latitude, longitude, crs="EPSG:4326"):
+
+def _meters_to_latlon(distance_meters, latitude, longitude, crs="EPSG:4326"):
     """Converts a distance in meters to a latitude and longitude difference at a given location.
 
     Args:
@@ -361,262 +364,176 @@ def meters_to_latlon(distance_meters, latitude, longitude, crs="EPSG:4326"):
     lon_diff = new_coords.x - longitude
 
     return lat_diff, lon_diff
+
+
+def _xr_gdalslope(dataarray, log=None, 
+                    alg="Horn", # literature suggests Zevenbergen & Thorne to be more suited to smooth landscapes, whereas Horn's formula to perform better on rougher terrain.
+                    slopeFormat="percent",
+                    scale=1,
+                    computeEdges=True,
+                    #zFactor=1,
+        
+                  **kwargs):
+    """compute teh slope of a rioxarray by sending it to gdal"""
+    
+ 
+    
+    # Create in-memory source raster
+    drv = gdal.GetDriverByName("MEM")  
+    src_ds = drv.Create("", dataarray.shape[1], dataarray.shape[0], 1, gdal.GDT_Float32)
+    src_band = src_ds.GetRasterBand(1)
+    src_band.WriteArray(dataarray.data)
+    src_band.SetNoDataValue(int(dataarray.rio.nodata) or -9999)  # Set nodata from DataArray
+ 
+    # Set GeoTransform and Projection
+    # Extract GeoTransform from Affine object
+    #===========================================================================
+    # transform = dataarray.rio.transform()
+    # geotransform = (transform.a, transform.b, transform.c, 
+    #                 transform.d, transform.e, transform.f)
+    #===========================================================================
+     
+    #src_ds.SetGeoTransform(geotransform)
+    src_ds.SetProjection(dataarray.rio.crs.to_wkt())
+
+    # Create in-memory destination raster
+    #===========================================================================
+    # dst_ds = drv.Create("", dataarray.shape[1], dataarray.shape[0], 1, gdal.GDT_Float32) 
+    # dst_ds.SetGeoTransform(src_ds.GetGeoTransform())
+    # dst_ds.SetProjection(src_ds.GetProjection())
+    #===========================================================================
+    #===========================================================================
+    # dataarray.rio.__gdal_obj__
+    # dataarray.rio.to_rasterio()
+    # with dataarray.rio.rasterio as src:
+    #     src_ds = src.ds  # Get the GDAL dataset object
+    #===========================================================================
+
+
+    #src_ds = dataarray.rio.open_gdal_dataset()
+    # Perform GDAL DEM processing
+    
+    dst_ds = gdal.DEMProcessing(
+        "",
+        src_ds,
+        "slope",
+        format="MEM", 
+        alg=alg, slopeFormat=slopeFormat, scale=scale, computeEdges=computeEdges  
+    )
+    
+ 
+    dst_band = dst_ds.GetRasterBand(1)
+ 
+    # Create xarray DataArray from result
+    ar = copy.deepcopy(dst_band.ReadAsArray())
+    
+    
+    mask = np.logical_or(ar==dataarray.rio.nodata, dataarray.isnull().data)
+    mar = ma.MaskedArray(ar, mask=mask)
+    
+    da = dataarray_from_masked(mar, dataarray)
+    
+    da.attrs['layerName'] = 'slope'
+ 
+    return da
+    
+
+
+def _cost_accumulation_wbt(wse_xr, cost_xr, log=None, out_dir=None):
+    """
+    Fills masked values in a 2D array using cost-distance weighted nearest neighbor interpolation.
+    """
+    
+    #===========================================================================
+    # helpers for wbt
+    #===========================================================================
+    current_wdir = os.getcwd() #WBT moves htis
+    restore_cwd = lambda: os.chdir(current_wdir)
+    out_dir = get_od(out_dir)
+    
+    to_gtif = lambda da, fn: xr_to_GeoTiff(da, os.path.join(out_dir, fn), log)
+    
+    
+    #===========================================================================
+    # init wbt
+    #===========================================================================
+    from ..hp.wbt import wbt
+    wbt.set_default_callback(lambda value: log.debug(value) if not "%" in value else None)
+            
+    #===========================================================================
+    # prep
+    #===========================================================================
+    
+ #==============================================================================
+ #    #add arbitrary increment to handle negative WSE
+ #    add_increment=0
+ # 
+ #    if wse_xr.min()<0:
+ #        """shouldnt need to revert because its only teh costs we care about"""
+ #        add_increment=9999
+ #        log.warning(f'adding increment {add_increment} to handle negative WSE')    
+ #        wse_xr = wse_xr + add_increment
+ #==============================================================================
+    #convert to inundation
+    inun_xr = wse_xr.where(wse_xr.notnull(), 0.0).where(wse_xr.isnull(), 1.0)
+    #inun_xr = np.where(wse_xr.notnull(), 1.0, 0.0)
+ 
+    assert inun_xr.sum()==wse_xr.notnull().sum()
+    
+    #dump to GeoTiff
+    log.debug(f'dumping Xarrays to GeoTiffs')
+    inun_fp = to_gtif(inun_xr, '00_inun.tif')
+    cost_fp = to_gtif(cost_xr, '00_cost.tif')
+    
+    
+    #===========================================================================
+    # #compute backlink raster
+    #===========================================================================
+    log.debug("wbt.cost_distance")
+    backlink_fp = os.path.join(out_dir, f'01_backlink.tif')
+    costAccum_fp = os.path.join(out_dir, f'01_outAccum.tif')
+    if not wbt.cost_distance(inun_fp,cost_fp, 
+                             costAccum_fp,backlink_fp,
+                             ) == 0:
+        raise IOError('cost_distance')
+    
+    restore_cwd()
+    assert current_wdir==os.getcwd()
+    
+    #===========================================================================
+    # back to Xarray
+    #===========================================================================
+    load_xr = lambda x: rioxarray.open_rasterio(x,masked=False).squeeze(
+        ).compute().rio.write_nodata(-9999).rio.write_crs(wse_xr.rio.crs)
+    
+    costAccum_xr = load_xr(costAccum_fp)
+    costAccum_xr.attrs = wse_xr.attrs.copy()
+    
+    log.debug('finished')
+    
+    return costAccum_xr
+
 #===============================================================================
 # RUNNERS------
 #===============================================================================
-def downscale_pluvial_costGrow_xr(
-        dem_fine_xr, wse_coarse_xr,
-        
-        
-        wsh_coarse_thresh=0.1,
-        
-        
-        dem_coarse_xr=None,
-        wsh_coarse_xr=None,
-        
-        logger=None,
-        #write_meta=True,
-        debug=__debug__,
-        out_dir=None,  
-        
-        **kwargs):
-    """wraper for pluvial pre/post filtering
-    
-    here we remove small depths, then run teh downscaler, then add the small depths back
-    
-    three options for establishing the pre-filter are available (in order of preference)
-    
-        provide the coarse WSH (wsh_coarse_xr not None)
-            threshold-based mask is computed directly from the WSH 
-        provide the coarse DEM (wsh_coarse_xr is None and dem_coarse_xr not None)
-            deltas are computed from WSE_coarse - DEM_coarse 
-            and threshold-based mask is computed from delta
-        extrapolate coarse depths from coarse WSE
-            first the coarse DEM is approximated with a minimum resample
-            then follows as in above
-            
-            note this requires a much higher wsh_coarse_thresh to be roughly equivalent to the other options
-        
-    
-    
-    
-    Params
-    ---------------
-    wsh_coarse_thresh: float
-        for pluvial=True, water depth threshold for pre/post filter
-        
-    dem_coarse_xr: xr.DataArray, optional
-        used to overr-ride filter calculation for pluvial=True
-    """
-    
-    #=======================================================================
-    # defaults
-    #=======================================================================
-    log = logger.getChild('pluvial')
-    
- 
-    assert_partial=False #pluvial WSEs can be all wet
-    #===========================================================================
-    # pre-filter-------
-    #===========================================================================
-    
-    
-    if wsh_coarse_thresh<0.0:
-        raise IOError(wsh_coarse_thresh)
-    elif wsh_coarse_thresh==0.0:
-        assert wse_coarse_xr.isnull().any(), 'must pass wsh_coarse_thresh>0.0 for all wet wse'
-        wse_coarse_xr1 = wse_coarse_xr
-    else:
-        
-        #=======================================================================
-        # setup
-        #=======================================================================
-        phaseName='00_01_pluvialPre'
-        log.debug(f'pre-filtering w/ wsh_coarse_thresh={wsh_coarse_thresh}')
-        
-        wse_mar = wse_coarse_xr.to_masked_array()
-        #=======================================================================
-        # dem-based filter
-        #=======================================================================
-        if wsh_coarse_xr is None:
-            log.debug(f'extrapolating coarse {phaseName} deltas from WSE')
-            if dem_coarse_xr is None:
-                #get a lower-bound DEM to ensure we are never above teh WSE
-                
-                log.debug('constructing coarse DEM from fine w/ Resampling.min')
-                
-                """need to use min here.. even though that really limits the filter capacity
-                otherwise, we get bad filters in steep terrain
-                """
-                dem_coarse_xr = resample_match_xr(dem_fine_xr,wse_coarse_xr,resampling=Resampling.min)
-            
-            dem_mar = dem_coarse_xr.to_masked_array()
-            domain_coarse_mask = dem_mar.mask
-            
-            #===========================================================================
-            # precheck
-            #===========================================================================
-            if debug:
-                out_dir = _get_od(out_dir)
-                msg = phaseName+' precheck' 
-                assert_wse_ar(wse_mar, msg=msg, assert_partial=assert_partial)
-                assert_dem_ar(dem_mar, msg=msg)
-                
-                try:
-                    assert_wse_vs_dem_mar(wse_mar, dem_mar, msg=msg, assert_partial=assert_partial)
-                except Exception as e:
-                    log.warning(f'DEM and WSE may be inconsistent\n    {e}')
-                    
-                xr_to_GeoTiff(dem_coarse_xr, os.path.join(out_dir, phaseName+'_dem_coarse_min.tif'), log=log)
-                
-    
-                
-            #=======================================================================
-            # get filter mask
-            #=======================================================================
-            delta_ar = wse_mar.data - dem_mar.data
-            
-        #=======================================================================
-        # wsh-based filter
-        #=======================================================================
-        else:
-            log.debug(f'using passed WSH_coarse for deltas')
-            wsh_mar = wsh_coarse_xr.to_masked_array()
-            delta_ar = wsh_mar.data
-            domain_coarse_mask = wsh_mar.mask
-        
-        #=======================================================================
-        # assemble filter layer
-        #=======================================================================
-        #boolean of pixels to remove (does not include domain nulls)
-        pluvial_remove_bool_ar = np.logical_and(
-            delta_ar<=wsh_coarse_thresh, #small depths
-            np.logical_and(
-                np.invert(wse_mar.mask), #wet
-                np.invert(domain_coarse_mask) #inside the domain            
-            ))
-        
-        delta_coarse_pluvial_remove_xr = dataarray_from_masked(
-            ma.MaskedArray(delta_ar, mask=np.invert(pluvial_remove_bool_ar)),
-                                  wse_coarse_xr)
-        
-        
-        
-        if debug:
-            assert_partial_wet(pluvial_remove_bool_ar, msg=f'pluvial pre-filter mask w/ wsh_coarse_thresh={wsh_coarse_thresh}')
-        
-        #=======================================================================
-        # apply m ask
-        #=======================================================================
- 
-        wse_coarse_xr1 = wse_coarse_xr.where(~pluvial_remove_bool_ar, np.nan)
-        log.debug(f'prefiltered {pluvial_remove_bool_ar.sum()}/{pluvial_remove_bool_ar.size} pixels as dry on wse_coarse w/ wsh_coarse_thresh')
-        
-        
-        #=======================================================================
-        # wrap
-        #=======================================================================
-        if debug:            
- 
-            xr_to_GeoTiff(delta_coarse_pluvial_remove_xr, 
-                          os.path.join(out_dir, phaseName+'_delta_coarse_pluvial_remove_xr.tif'), log=log)
- 
- 
-            assert_wse_xr(wse_coarse_xr1, msg='post wsh_coarse_thresh ' + phaseName)
-            
-    #===========================================================================
-    # apply downscaler--------
-    #===========================================================================
-    wse_fine_xr, meta_d =  downscale_costGrow_xr(
-        dem_fine_xr, wse_coarse_xr1,
-        logger=logger, debug=debug, out_dir=out_dir,
-        **kwargs)
-    
-    meta_d.update({'pluvial':True, 'wsh_coarse_thresh':wsh_coarse_thresh})
-    
-    #===========================================================================
-    # post filter-----------
-    #===========================================================================
-    phaseName='99_01_pluvialPost'
-    if not wsh_coarse_thresh==0.0:
-        log.debug(f're-applying dry mask to {wse_fine_xr.shape}')
-        domain_fine_mask = dem_fine_xr.to_masked_array().mask
-        
-        #resample the removed WSH
-        delta_fine_pluvial_reapply_mar = resample_match_xr(delta_coarse_pluvial_remove_xr,dem_fine_xr,resampling=Resampling.nearest).to_masked_array()
-        
-        """need to re-fill wet partials as well"""
-        wse_fine_mar  = wse_fine_xr.to_masked_array()
-        dry_search_domain = np.logical_and(
-            wse_fine_mar.mask, #dry
-            np.invert(domain_fine_mask), #inside the domain
-            )
-        
-        assert_partial_wet(dry_search_domain)
-        
-        """are two phases really necessary? Or can we just fill back with the delta?
-        still some dry holes... I guess I'll pick this up tomorrow
-        """
-        #first fill with the delta fines
-        wse_fine_xr1 = wse_fine_xr.fillna(np.where(dry_search_domain, 
-                                                   delta_fine_pluvial_reapply_mar.filled(fill_value=np.nan) + dem_fine_xr, np.nan))
-        
-        #fill remainder with coarse WSH
-        delta_fine_xr = resample_match_xr(
-            dataarray_from_masked(
-                ma.MaskedArray(
-                    np.where(delta_ar>0, delta_ar, 0.0),
-                        mask=domain_coarse_mask), wse_coarse_xr),
-            dem_fine_xr,resampling=Resampling.nearest)
-         
-        wse_fine_xr2 = wse_fine_xr1.fillna(np.where(dry_search_domain, delta_fine_xr + dem_fine_xr, np.nan))
-        
- 
- 
-        
-        if debug:            
-            xr_to_GeoTiff(wse_fine_xr2,os.path.join(out_dir, phaseName+'_wse_fine.tif'), log=log) 
-            assert_wse_xr(wse_fine_xr2, msg=phaseName, assert_partial=False)
-            
-            xr_to_GeoTiff(delta_fine_xr,
-                          os.path.join(out_dir, phaseName+'_delta_fine_reapply.tif'), log=log) 
-            
-            #check mask is correct            
-            assert np.all(np.isnan(wse_fine_xr2.data[domain_fine_mask].ravel())), f'got some reals outside domain'
-            
-            #write the WSH as well
-            xr_to_GeoTiff(
-                wse_to_wsh_xr(dem_fine_xr, wse_fine_xr2, log=log, assert_partial=False, allow_low_wse=True),
-                    os.path.join(out_dir, phaseName+'_wsh_fine.tif'), log=log) 
+   
             
             
-    else:
-        wse_fine_xr1=wse_fine_xr
-            
-    #=======================================================================
-    # wrap
-    #=======================================================================
-    meta_d['pluvial_post_wetCnt'] = wse_fine_xr2.notnull().sum().item()
-    
-    log.debug(f'finished pluvial wrapper')
-    
-    return wse_fine_xr2, meta_d
-        
-        
-        
-        
-            
-            
+
+
+
 
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 distance_fill='neutral',
                 distance_fill_method='distance_transform_cdt',
+                
+                decay_method='linear',
                 decay_frac=0.001,
                 dp_coarse_pixel_max=10,
                           
                  logger=None,
-                 write_meta=True,
+                 write_meta=True, meta_d=dict(),
                  debug=__debug__,
                  out_dir=None,
                  ):
@@ -629,6 +546,12 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         type of cost surface to use
             neutral: nn flat surface extrapolation
             terrain_penalty: cost distance extrapolation with terrain penalty
+            
+    
+    distance_fill_method: str, default 'distance_fill_method'
+        scipy.ndimage method to apply. see _distance_fill()
+        
+        
             
     
     decay_frac: float, default 0.001 m/m
@@ -652,17 +575,25 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     #=======================================================================
     log = logger.getChild('costGrow')
     
-    meta_d=dict()
+ 
     nodata = dem_fine_xr.rio.nodata
     dem_mar = dem_fine_xr.to_masked_array()
     dem_mask = dem_mar.mask
+    
+    if not dem_fine_xr.rio.crs.linear_units == 'metre':
+        res_t = approximate_resolution_meters(dem_fine_xr)        
+        m_to_rad = np.abs(res_t).mean()/np.abs(dem_fine_xr.rio.resolution()).mean()
+        
+    else:
+        res_t = dem_fine_xr.rio.resolution()
+        m_to_rad=None
     #===========================================================================
     # pre-chescks
     #===========================================================================
     phaseName = '00_inputs'
     log.debug(phaseName)
     
-
+    if decay_frac==0.0: assert decay_method=='none'
         
 
         
@@ -670,7 +601,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     # function helpers------
     #===========================================================================
     if debug:
-        out_dir = _get_od(out_dir)
+        out_dir = get_od(out_dir)
         log.debug(f'out_dir set to \n    {out_dir}')
         
         def to_gtiff(da, phaseName, layerName=None):
@@ -704,8 +635,14 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     # setup
     #===========================================================================
     
-    dem_fine_xr.attrs['layerName'] = 'dem_fine'
-    wse_coarse_xr.attrs['layerName'] = 'wse_coarse'
+    # Iterate through the DataArrays and check their layerName attributes
+    set_da_layerNames({'dem_fine':dem_fine_xr,'wse_coarse':wse_coarse_xr})
+        
+    
+    #===========================================================================
+    # dem_fine_xr.attrs['layerName'] = 'dem_fine'
+    # wse_coarse_xr.attrs['layerName'] = 'wse_coarse'
+    #===========================================================================
     
     #dump inputs (needs to come after the debug)
     if debug:
@@ -776,10 +713,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     log.debug(phaseName)
     
     wse_mar = wse_fine_xr1.to_masked_array()
-    
-    
-    
-    
+ 
     wse_mar2 = ma.MaskedArray(np.nan_to_num(wse_mar.data, nodata),
               mask=np.logical_or(
                   np.logical_or(dem_mar.mask, wse_mar.mask), #union of masks
@@ -813,11 +747,11 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     
     
     #needed by filter ops
-    distance_ar = scipy.ndimage.distance_transform_cdt(
-        wse_fine_xr2.isnull().data.astype(int),return_indices=False,return_distances=True)
+    f = getattr(scipy.ndimage, distance_fill_method)
+    distance_ar = f(wse_fine_xr2.isnull().data.astype(int),return_indices=False,return_distances=True)
     
     #===========================================================================
-    # 03.1 growth threshold
+    #    03.1 growth threshold------
     #===========================================================================
     if not dp_coarse_pixel_max is None:
         #True=within region of interest
@@ -829,7 +763,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         
  
     #===========================================================================
-    # 03.2 get imputed/filled WSE
+    #    03.2 get imputed/filled WSE---------
     #===========================================================================
     """seems like there should be  away to apply grow_thresh_bar to speed up the distance calcs below""" 
         
@@ -843,7 +777,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     elif distance_fill == 'terrain_penalty':         
         wse_filled_xr = _distance_fill_cost_terrain(wse_fine_xr2, dem_fine_xr,
                                     wse_coarse_xr, log=log.getChild(phaseName),
-                                    out_dir=out_dir)
+                                    out_dir=out_dir, m_to_rad=m_to_rad)
         
         wse_filled_ar = wse_filled_xr.data
  
@@ -852,26 +786,46 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     
 
     #===========================================================================
-    #03.3 decay
+    #    03.3 decay--------
     #===========================================================================
-    if decay_frac>0.0:
-        log.debug(f'applying decay_frac={decay_frac}')
+    
+    if not decay_method=='none':
         
+        log.debug(f'applying decay_method={decay_method} w/ decay_frac={decay_frac}')
         #convert the decay_frac to geographic
-        try:
-            res_t = approximate_resolution_meters(wse_fine_xr2)
-            
-            decay_frac_m = np.abs(res_t).mean()*decay_frac
-            
-        except Exception as e:
-            warnings.warn(f'failed to convert decay_frac to meters... usting raw\n    {e}')
-            decay_frac_m=decay_frac
+        decay_frac_m = np.abs(res_t).mean()*decay_frac            
+        meta_d['decay_frac_m'] = decay_frac_m
+    
+    #===========================================================================
+    # by method
+    #===========================================================================
+    if decay_method=='linear':
         
         #multiply by distance to nearest wet
-        log.debug(f'applying decay_frac_m={decay_frac_m:.3f}')        
+        log.debug(f'applying distanc-weighted decay_frac_m={decay_frac_m:.3f}')        
         decay_ar = distance_ar*decay_frac_m
         
-        meta_d['decay_frac_m'] = decay_frac_m
+    elif decay_method=='slope_weighted':
+        
+        #retrieve teh slope
+        slope_xr = _xr_gdalslope(dem_fine_xr, log=log, scale=np.abs(res_t).mean())
+        
+        #cost weight this starting from teh wet partials
+        costAccum_slope_xr = _cost_accumulation_wbt(wse_fine_xr2, slope_xr, log=log, 
+                                                    out_dir=os.path.join(out_dir, decay_method),
+                                                    )
+        
+        #convert to meters
+        if not m_to_rad is None:
+
+            log.debug(f'converting distance degrees to meters w/ {m_to_rad:.2f}')
+            costAccum_slope_xr = costAccum_slope_xr*m_to_rad
+        
+        #multiply  by decay fraction
+        log.debug(f'computing decay from cost-accumulated slopes * {decay_frac_m:.3f}')
+        decay_ar = costAccum_slope_xr.data * decay_frac_m
+        
+        
         
     else:
         decay_ar = np.zeros(distance_ar.shape)
@@ -914,10 +868,11 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
             
         
         #write decay
-        if (decay_frac>0.0) or (not decay_frac is None):
+        if not decay_method=='none':
             decay_xr = dataarray_from_masked(ma.MaskedArray(decay_ar, mask=dem_fine_xr.isnull().data), dem_fine_xr)
             decay_xr.attrs['layerName'] = '3decay'
             to_gtiff(decay_xr, phaseName)
+            to_gtiff(slope_xr, phaseName)
         
     if write_meta:
         meta_d['distance_fill'] = distance_fill
@@ -972,6 +927,10 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         assert_equal_raster_metadata(wse_fine_xr4, dem_fine_xr)
  
         to_gtiff(wse_fine_xr4, phaseName)
+        
+        #write depths also
+        to_gtiff(wse_to_wsh_xr(dem_fine_xr, wse_fine_xr4, log=log, allow_low_wse=True), phaseName)
+        
         
     if write_meta:
         meta_d['isolated_region_raw_cnt'] = nlabels

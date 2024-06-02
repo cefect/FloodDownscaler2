@@ -59,15 +59,28 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
     'case_ruth',
     ])
 @pytest.mark.parametrize('method, params',[
-                         ('CostGrow', dict(distance_fill='neutral', wsh_coarse_thresh=0.2)),
+                         ('CostGrow', dict(
+                             distance_fill='neutral', 
+                             filter_depth=0.12, 
+                             decay_frac=0.001, 
+                             distance_fill_method='distance_transform_edt',
+                             dp_coarse_pixel_max=100,
+                             decay_method='slope_weighted',
+                             )),
                          #('CostGrow', dict(distance_fill='terrain_penalty')),
                          ])
 @pytest.mark.parametrize('use_wsh', [
-    #True, 
-    False])
+    True, 
+    #False,
+    ])
+@pytest.mark.parametrize('use_dem', [
+    True, #nice for writing some coarse debug outouts 
+    #False,
+    ])
 def test_downscale_pluvial_wse_raster(dem_fine_fp, wse_coarse_fp, 
-                                      wsh_coarse_fp,
-                              method, params,use_wsh,
+                                      wsh_coarse_fp,dem_coarse_fp,
+                              method, params,
+                              use_wsh,use_dem,
                               tmpdir, logger, caseName):
     
     print(f'caseName: {caseName}')
@@ -75,10 +88,15 @@ def test_downscale_pluvial_wse_raster(dem_fine_fp, wse_coarse_fp,
     
     if not use_wsh:
         wsh_coarse_fp = None
+        
+    if not use_dem:
+        dem_coarse_fp=None
     
+    #downscale_pluvial_costGrow_xr()
     func(dem_fine_fp, wse_coarse_fp, 
          method=method,  
          out_dir=os.path.join(tmpdir, caseName),
          logger=logger,
-         pluvial=True, wsh_coarse_fp=wsh_coarse_fp,
+         pluvial=True, 
+         wsh_coarse_fp=wsh_coarse_fp,dem_coarse_fp=dem_coarse_fp,
          **params) 
