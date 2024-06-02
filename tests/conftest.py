@@ -10,8 +10,8 @@ Created on May 25, 2024
 #===============================================================================
 import os, pathlib, pytest, logging, sys, tempfile, pickle, copy, warnings
 import rioxarray
-from ..hp.dirz import recursive_file_search
-from ..hp.xr import coarsen_dataarray, resample_match_xr, wse_to_wsh_xr, xr_to_GeoTiff
+from ..fdsc.hp.dirz import recursive_file_search
+from ..fdsc.hp.xr import coarsen_dataarray, resample_match_xr, wse_to_wsh_xr, xr_to_GeoTiff
 
 #===============================================================================
 # Parameters-------
@@ -143,7 +143,7 @@ def _get_xr(caseName, phase, dataName):
     """deepcopy is not copying the rio data
     #check it
     da = copy.deepcopy(test_data_lib[caseName][phase][dataName])"""
-    from ..assertions import assert_xr_geoTiff        
+    from ..fdsc.assertions import assert_xr_geoTiff        
     assert_xr_geoTiff(da, msg='%s.%s.%s'%(caseName, phase, dataName))
     
         
