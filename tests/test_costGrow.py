@@ -61,7 +61,7 @@ def test_distance_fill(wse_fine_xr, _method, params, tmpdir):
     xr_to_GeoTiff(da, os.path.join(tmpdir, f'{_method}.tif'), compress=None)
 
 
-@pytest.mark.dev
+ 
 @pytest.mark.parametrize('phase', ['02_wp'])
 @pytest.mark.parametrize('caseName',[
     #'case_01', #no DEM
@@ -83,6 +83,23 @@ def test_distance_fill_cost_terrain(wse_fine_xr,dem_fine_xr, wse_coarse_xr,
     #output
     da = dataarray_from_masked(ma.MaskedArray(result), wse_fine_xr) 
     xr_to_GeoTiff(da, os.path.join(tmpdir, f'{cd_backend}.tif'), compress=None)
+    
+
+@pytest.mark.dev
+#@pytest.mark.parametrize('phase', ['02_wp'])
+@pytest.mark.parametrize('caseName',[
+    #'case_01', #no DEM
+    #'case_ahr',
+    'case_jordan',
+    #'case_toy1',
+    #'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
+    ]) 
+def test_xr_gdalslope(dem_fine_xr, logger, tmpdir):
+    from fdsc.alg.costGrow import _xr_gdalslope as func
+    
+    da = func(dem_fine_xr, log=logger)
+    
+    xr_to_GeoTiff(da, os.path.join(tmpdir, f'xr_gdalslope.tif'), compress=None)
     
     
     
