@@ -15,6 +15,7 @@ from tqdm.auto import tqdm
 
 import scipy.ndimage 
 import skimage.graph
+ 
 #from osgeo import gdal
 
 from parameters import today_str
@@ -87,6 +88,7 @@ def downscale_pluvial_xr(
         filter_method='blanket',
         filter_depth=0.1,
         small_pixel_count=5,
+        reapply_small_groups=False,
         
         
         dem_coarse_xr=None, dem_coarse_resampling=Resampling.average,
@@ -130,7 +132,10 @@ def downscale_pluvial_xr(
         depth used for filtering. see 'filter_method' for 
         
     small_pixel_count: int
-        count of pixels for groups to remove then re-apply 
+        count of pixels for groups to remove then re-apply
+        
+    reapply_small_groups: bool
+        whether to add back the small groups removed by small_pixel_count post wse extrapolation
     """
     
  
@@ -140,12 +145,12 @@ def downscale_pluvial_xr(
     #=======================================================================
     log = logger.getChild('pluvial')    
  
-    assert_partial=False #pluvial WSEs can be all wet
-    
-    assert not wse_proj_func is None
-    
  
+    
+    assert not wse_proj_func is None 
     nodata = wse_coarse_xr.rio.nodata
+    
+    if reapply_small_groups: assert small_pixel_count>0 
     #===========================================================================
     # setup
     #===========================================================================
@@ -376,7 +381,7 @@ def downscale_pluvial_xr(
     #===========================================================================
     phaseName='99_01_reapplySmalls'
     
-    if not small_bar is None:
+    if (not small_bar is None) and reapply_small_groups:
         """not sure about this... is the wet partial working?"""
         log.debug('reapplying small groups')
         #resample the small guys        
@@ -391,13 +396,16 @@ def downscale_pluvial_xr(
         #infill 
         wse_fine_xr01 = wse_fine_xr_extrap.fillna(wse_fine_smalls_wp_xr)
         
+        
+        if debug:
+            to_gtiff(wse_fine_xr01, phaseName)
+            to_gtiff(wse_fine_smalls_wp_xr, phaseName)
+            assert wse_fine_xr01.isnull().sum()<=wse_fine_xr_extrap.isnull().sum()
+        
     else:
         wse_fine_xr01 = wse_fine_xr_extrap
         
-    if debug:
-        to_gtiff(wse_fine_xr01, phaseName)
-        to_gtiff(wse_fine_smalls_wp_xr, phaseName)
-        assert wse_fine_xr01.isnull().sum()<=wse_fine_xr_extrap.isnull().sum()
+
  
    
     #===========================================================================
