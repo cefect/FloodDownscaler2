@@ -19,20 +19,23 @@ np.set_printoptions(linewidth=300)
 
 @pytest.mark.parametrize('phase', ['00_raw'])
 @pytest.mark.parametrize('caseName',[
-    'case_toy1',
-    
+    'case_toy1',    
     'case_ahr', #(16, 18) to (128, 144)
     'case_jordan', #(197, 213) to (591, 639) EPSG4326    
     #'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1. slow
-    pytest.param('case_ruth', marks=pytest.mark.xfail)
+    #pytest.param('case_ruth', marks=pytest.mark.xfail) #pluvial
  
     ])
 @pytest.mark.parametrize('method, params',[
-                         ('CostGrow', dict(distance_fill='neutral')),
-                         #('CostGrow', dict(distance_fill='terrain_penalty')),
+                         ('CostGrow', dict(distance_fill='neutral', dp_coarse_pixel_max=2)),
+                         ('CostGrow', dict(distance_fill='terrain_penalty', distance_fill_method='distance_transform_edt')),
                          ])
+@pytest.mark.parametrize('decay_method_d',[
+    {'linear':dict(decay_frac=0.005),'slope_linear':dict( decay_frac=0.005),'slope_power':dict(n=1.4, c=0.001)},
+    {},    
+    ])
 def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp, 
-                              method, params,
+                              method, params,decay_method_d,
                               tmpdir, logger, caseName):
     
     print(f'caseName: {caseName}')
@@ -49,7 +52,7 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
          method=method, 
          out_dir=os.path.join(tmpdir, caseName),
          logger=logger,
-         pluvial=False,
+         pluvial=False, decay_method_d=decay_method_d,
          **params) 
     
     
@@ -59,7 +62,7 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
     'case_ruth',
     ])
 @pytest.mark.parametrize('method, params',[ 
-  #('CostGrow', dict(distance_fill='neutral',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=50)),
+  ('CostGrow', dict(distance_fill='neutral',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=50)),
   ('CostGrow', dict(distance_fill='terrain_penalty',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=10)),
   ])
  
@@ -124,7 +127,7 @@ def test_downscale_pluvial_wse_raster(dem_fine_fp, wse_coarse_fp,
                               use_wsh,use_dem,pluvial_params,
                               tmpdir, logger, caseName):
     
-    print()
+ 
     logger.info(f'caseName: {caseName}\n{pprint.pformat(decay_method_d)}\n{tmpdir}')
  
     from fdsc.main import downscale_wse_raster as func

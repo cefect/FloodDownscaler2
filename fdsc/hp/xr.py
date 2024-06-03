@@ -320,7 +320,7 @@ def wse_to_wsh_xr(dem_xr, wse_xr, log=None, assert_partial=True, allow_low_wse=F
     
     #delta_ar = np.nan_to_num(wse_mar.data - dem_mar.data, 0.0)
     delta_mar = ma.MaskedArray(
-        wse_mar.data - dem_mar.data, mask=dem_mar.mask
+        wse_mar.filled(dem_mar.data).data - dem_mar.data, mask=dem_mar.mask
         )
         
     
