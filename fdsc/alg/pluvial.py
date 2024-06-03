@@ -277,7 +277,7 @@ def downscale_pluvial_xr(
         
         #construct the blanket 
         blanket_coarse_xr = xr.apply_ufunc(np.minimum, wsh_coarse_xr, filter_depth
-                        ).where(~domain_coarse_mask, np.nan).rio.write_nodata(nodata)
+                        ).where(wse_coarse_xr.notnull(), 0.0).where(~domain_coarse_mask, np.nan).rio.write_nodata(nodata)
  
         
         
