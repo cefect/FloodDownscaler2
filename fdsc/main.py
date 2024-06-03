@@ -113,7 +113,7 @@ def downscale_wse_raster(
     
     
     if method=='CostGrow':
-        from fdsc.alg.costGrow import downscale_costGrow_xr as wse_proj_func
+        from .alg.costGrow import downscale_costGrow_xr as wse_proj_func
         
     else:
         raise KeyError(method)
@@ -125,7 +125,7 @@ def downscale_wse_raster(
         func = wse_proj_func
     else:
         log.info('preparing pluvial downscaling')
-        from fdsc.alg.pluvial import downscale_pluvial_xr as func
+        from .alg.pluvial import downscale_pluvial_xr as func
         
         #load the coarse WSH if present
         for layerName, fp in {

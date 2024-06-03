@@ -19,7 +19,7 @@ import logging, os
 import parameters
  
  
-from whiteboxtools.whitebox_tools import WhiteboxTools
+from ...whiteboxtools.whitebox_tools import WhiteboxTools
 wbt = WhiteboxTools()
 
 from definitions import wbt_dir, wrk_dir

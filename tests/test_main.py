@@ -39,7 +39,7 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
                               tmpdir, logger, caseName):
     
     print(f'caseName: {caseName}')
-    from fdsc.main import downscale_wse_raster as func
+    from ..fdsc.main import downscale_wse_raster as func
     
     """no.. not setup for this
     if write_to_test_data:
@@ -130,7 +130,7 @@ def test_downscale_pluvial_wse_raster(dem_fine_fp, wse_coarse_fp,
  
     logger.info(f'caseName: {caseName}\n{pprint.pformat(decay_method_d)}\n{tmpdir}')
  
-    from fdsc.main import downscale_wse_raster as func
+    from ..fdsc.main import downscale_wse_raster as func
     
     if not use_wsh:
         wsh_coarse_fp = None
