@@ -112,7 +112,7 @@ def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=Non
     cost_xr = xr.where(delta_xr < 0, 0.0, delta_xr).fillna(999).round(1)
     cost_xr.rio.write_crs(dem_fine_xr.rio.crs, inplace=True) #not sure where this got lost
     
-    if m_to_rad:
+    if not m_to_rad==1.0:
         raise IOError('dome')
         cost_xr
     
@@ -508,8 +508,11 @@ def _cost_accumulation_wbt(wse_xr, cost_xr, log=None, out_dir=None):
     
     costAccum_xr = load_xr(costAccum_fp)
     costAccum_xr.attrs = wse_xr.attrs.copy()
+    costAccum_xr.attrs['layerName'] = 'costAccum'
     
     log.debug('finished')
+    
+    assert_xr_geoTiff(costAccum_xr, msg='_cost_accumulation_wbt')
     
     return costAccum_xr
 
@@ -523,13 +526,182 @@ def _cost_accumulation_wbt(wse_xr, cost_xr, log=None, out_dir=None):
 
 
 
+
+def _dp_decay(dem_fine_xr, wse_filled_xr, wse_fine_xr,
+              decay_method_d=dict(),
+                        m_to_rad=1.0, 
+                        pixel_size_m=1.0, 
+                        distance_ar=None,
+                        logger=None, debug=__debug__, 
+                        out_dir=None, 
+                        ):
+    """construct dry-partial decay array"""
+    
+    #===========================================================================
+    # defaults
+    #===========================================================================
+    log = logger.getChild('decay')
+    assert len(decay_method_d)>0
+    
+    log.info(f'constructing decay from {len(decay_method_d)}')
+    meta_d = dict()
+    layers_d=dict()
+    #===========================================================================
+    # helpers
+    #===========================================================================
+    def ar_to_gtiff(ar, *args, **kwargs):
+        mar = ma.MaskedArray(ar, mask=dem_fine_xr.isnull().data)
+        da = dataarray_from_masked(mar, dem_fine_xr)
+        
+        return to_gtiff(da, *args, **kwargs)
+        
+    
+    def to_gtiff(da, phaseName, layerName=None):
+        
+        phaseName = '03_dp_' + phaseName.replace('_','')        
+        
+        #output path
+        shape_str = _get_zero_padded_shape(da.shape)
+        if layerName is None:
+            layerName = da.attrs['layerName']
+    
+        ofp = os.path.join(out_dir, f'{phaseName}_{layerName}_{shape_str}')
+            
+        assert not os.path.exists(ofp), ofp
+            
+        #write GeoTiff (for debugging)
+        assert_xr_geoTiff(da, msg=f'output to_gtiff, {phaseName}.{layerName}')
+        
+        meta_d[f'{phaseName}_{layerName}_fp'] = xr_to_GeoTiff(da, ofp+'.tif', log=log, compress=None) 
+        
+        #write pickle (for unit tests) 
+        #_write_to_pick(da, os.path.join(out_dir, phaseName, layerName+'.pkl'))            
+        #wrap
+        
+        
+        return ofp + '.tif'
+    
+    def get_costAccum_slope_xr(phaseName=''):
+        if not 'costAccum_slope' in layers_d:
+        
+            slope_xr = _xr_gdalslope(dem_fine_xr, log=log, scale=pixel_size_m)
+            #cost weight this starting from teh wet partials
+            costAccum_slope_xr_raw = _cost_accumulation_wbt(wse_fine_xr, slope_xr, 
+                                        log=log, out_dir=os.path.join(out_dir, 'cost_accumulation_wbt')
+                                        )
+            
+            costAccum_slope_xr = costAccum_slope_xr_raw * m_to_rad
+            costAccum_slope_xr.attrs = costAccum_slope_xr_raw.attrs.copy()
+                                        
+            layers_d['costAccum_slope'] = costAccum_slope_xr
+            
+            if debug:
+                to_gtiff(slope_xr, phaseName, layerName = '01_slope')
+                to_gtiff(costAccum_slope_xr, phaseName, layerName = '02_costAccum')
+            
+        return copy.deepcopy(layers_d['costAccum_slope'])
+    
+    #===========================================================================
+    # identify decay zone-------
+    #===========================================================================
+    decay_zone_bar = wse_fine_xr.isnull().data
+    
+    decay_master_ar = np.zeros(decay_zone_bar.shape)
+    
+    #===========================================================================
+    # apply by method--------
+    #===========================================================================
+    for i, (decay_method, params) in enumerate(decay_method_d.items()):        
+        log.debug(f'decay for \'{decay_method}\' w/\n    {params}')
+        
+        phaseName = f'{i:02d}_{decay_method}'
+        sfx = '' #for adding some paraneters to the filename
+        #=======================================================================
+        # linear
+        #=======================================================================
+        if decay_method == 'linear':
+            decay_frac = params['decay_frac']
+            #multiply by distance to nearest wet
+            log.debug(f'applying distanc-weighted decay_frac={decay_frac:.3f}')
+            decay_ar = np.where(decay_zone_bar, distance_ar * decay_frac, 0.0)
+            
+            sfx = '_%.4f'%decay_frac
+        #=======================================================================
+        # slope-weighted linear
+        #=======================================================================
+        elif decay_method == 'slope_linear':
+            #retrieve teh slope
+            decay_frac = params['decay_frac']
+            
+            costAccum_slope_xr = get_costAccum_slope_xr(phaseName=phaseName)
+            #multiply  by decay fraction
+            log.debug(f'computing decay from cost-accumulated slopes * {decay_frac:.3f}')
+            decay_ar = costAccum_slope_xr.data * decay_frac
+            
+
+                
+        #=======================================================================
+        # elif decay_method == 'depth_decay':
+        #     #compute the depth extrapolation
+        #     depth_extrap_xr = wse_filled_xr - dem_fine_xr
+        #     #multiply by linear decay
+        #     decay_full_ar = depth_extrap_xr.where(depth_extrap_xr > 0, 0) + distance_ar * decay_frac.data
+        #     #mask out WP
+        #     decay_ar = np.where(decay_zone_bar, decay_full_ar, 0.0)
+        #     if debug:
+        #         depth_extrap_xr.attrs['layerName'] = 'depth_extrap'
+        #         to_gtiff(depth_extrap_xr.rio.write_nodata(nodata), phaseName)
+        #=======================================================================
+        elif decay_method == 'slope_power':
+ 
+            costAccum_slope_xr = get_costAccum_slope_xr(phaseName=phaseName)
+            
+            decay_ar = (costAccum_slope_xr.data ** params['n']) * params['c']
+            
+            sfx = '_n%.4f_c%.4f'%(params['n'], params['c'])
+ 
+            #===================================================================
+            # if debug:
+            #     to_gtiff(slope_xr, phaseName)
+            #     costAccum_slope_decay_xr = dataarray_from_masked(ma.MaskedArray(costAccum_slope_decay_ar, mask=dem_fine_xr.isnull().data), dem_fine_xr)
+            #     costAccum_slope_decay_xr.attrs['layerName'] = 'costAccum_slope_decay'
+            #     to_gtiff(costAccum_slope_decay_xr, phaseName)
+            #     ldecay_xr = dataarray_from_masked(ma.MaskedArray(linear_decay_ar, mask=dem_fine_xr.isnull().data), dem_fine_xr)
+            #     ldecay_xr.attrs['layerName'] = 'linear_decay'
+            #     to_gtiff(ldecay_xr, phaseName)
+            #===================================================================
+        else:
+            raise KeyError(decay_method)
+            
+        #=======================================================================
+        # append
+        #=======================================================================
+        decay_master_ar = decay_master_ar + decay_ar
+        
+        log.debug(f'appended decay for {decay_method} w/ {decay_ar.mean():.2f} and master {decay_master_ar.mean():.2f}')
+        
+        if debug:
+            ar_to_gtiff(decay_ar, phaseName, layerName='decay' + sfx)
+            
+    #===========================================================================
+    # wrap-----------
+    #===========================================================================
+    if debug:
+        ar_to_gtiff(decay_master_ar, 'combined', layerName='decay')
+    
+    log.debug(f'finished w/ \n    {meta_d}')
+        
+    return decay_master_ar, meta_d
+
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 distance_fill='neutral',
                 distance_fill_method='distance_transform_cdt',
                 
-                decay_method='linear',
-                decay_frac=0.001,
+                decay_method_d={
+                    'linear':dict(decay_frac=0.001),
+                    },
+ 
                 dp_coarse_pixel_max=10,
                           
                  logger=None,
@@ -552,7 +724,14 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         scipy.ndimage method to apply. see _distance_fill()
         
         
-            
+    decay_method: str
+        method for decaying DP extrapolation
+        
+        linear: distance*decay_frac
+        
+        slope_weighted: accumuated slope * decay_frac
+        
+        depth_decay: (WSE_extrapolated - DEM) * decay_frac
     
     decay_frac: float, default 0.001 m/m
         value (in meters) multiiplied  by distance and pixel size to obtain the decay grid
@@ -581,19 +760,22 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     dem_mask = dem_mar.mask
     
     if not dem_fine_xr.rio.crs.linear_units == 'metre':
-        res_t = approximate_resolution_meters(dem_fine_xr)        
-        m_to_rad = np.abs(res_t).mean()/np.abs(dem_fine_xr.rio.resolution()).mean()
+        resolution_meters_t = approximate_resolution_meters(dem_fine_xr)        
+        m_to_rad = np.abs(resolution_meters_t).mean()/np.abs(dem_fine_xr.rio.resolution()).mean()
         
     else:
-        res_t = dem_fine_xr.rio.resolution()
-        m_to_rad=None
+        resolution_meters_t = dem_fine_xr.rio.resolution()
+        m_to_rad=1.0
+        
+    
+    pixel_size_m = np.abs(resolution_meters_t).mean() #one number for simple distance conversions
     #===========================================================================
     # pre-chescks
     #===========================================================================
     phaseName = '00_inputs'
     log.debug(phaseName)
     
-    if decay_frac==0.0: assert decay_method=='none'
+ 
         
 
         
@@ -748,16 +930,26 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     
     #needed by filter ops
     f = getattr(scipy.ndimage, distance_fill_method)
-    distance_ar = f(wse_fine_xr2.isnull().data.astype(int),return_indices=False,return_distances=True)
+    distance_ar = f(wse_fine_xr2.isnull().data.astype(int),return_indices=False,return_distances=True
+                    )*pixel_size_m
+    
+    if debug:
+        distance_xr = dataarray_from_masked(ma.MaskedArray(distance_ar, mask=False), dem_fine_xr)
+        distance_xr.attrs['layerName'] = '0distance'
+        to_gtiff(distance_xr, phaseName)
+        
     
     #===========================================================================
     #    03.1 growth threshold------
     #===========================================================================
     if not dp_coarse_pixel_max is None:
         #True=within region of interest
-        grow_thresh_bar = distance_ar/downscale<dp_coarse_pixel_max
+        grow_thresh_bar = distance_ar/(downscale*pixel_size_m)<dp_coarse_pixel_max
         log.debug(f'w/ dp_coarse_pixel_max={dp_coarse_pixel_max} masked {np.invert(grow_thresh_bar).sum()/grow_thresh_bar.size:.4f} of pixels')
+        assert not grow_thresh_bar.all(), f'passed dp_coarse_pixel_max={dp_coarse_pixel_max} but max distance/downscale={np.max(distance_ar/downscale)}'+\
+                '\npass a smaller \'dp_coarse_pixel_max\' or pass None to remove pixel-based thresholding'
     else:
+        log.debug('no pixel-based growth limitation')
         grow_thresh_bar = np.full(distance_ar.shape, True)
         
         
@@ -788,68 +980,53 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     #===========================================================================
     #    03.3 decay--------
     #===========================================================================
+    #construct the combined decay values
+    decay_ar, d = _dp_decay(dem_fine_xr, wse_filled_xr, wse_fine_xr2,
+                        decay_method_d=decay_method_d,
+                        m_to_rad=m_to_rad, pixel_size_m=pixel_size_m, 
+                        distance_ar=distance_ar,
+                        logger=log, debug=debug, out_dir=os.path.join(out_dir, 'decay'), 
+                        )
     
-    if not decay_method=='none':
-        
-        log.debug(f'applying decay_method={decay_method} w/ decay_frac={decay_frac}')
-        #convert the decay_frac to geographic
-        decay_frac_m = np.abs(res_t).mean()*decay_frac            
-        meta_d['decay_frac_m'] = decay_frac_m
+    meta_d.update(d)
     
+    #apply the decay to the WSE
+    wse_filled_decayed_ar = wse_filled_ar - decay_ar
+    
+    if debug:
+        #check all the pre-decay pixels are hte same
+        assert np.all(wse_filled_decayed_ar[wse_fine_xr2.notnull()]==wse_fine_xr2.data[wse_fine_xr2.notnull()])
     #===========================================================================
-    # by method
+    #    03.4 infill w/ valid wses ------------
     #===========================================================================
-    if decay_method=='linear':
-        
-        #multiply by distance to nearest wet
-        log.debug(f'applying distanc-weighted decay_frac_m={decay_frac_m:.3f}')        
-        decay_ar = distance_ar*decay_frac_m
-        
-    elif decay_method=='slope_weighted':
-        
-        #retrieve teh slope
-        slope_xr = _xr_gdalslope(dem_fine_xr, log=log, scale=np.abs(res_t).mean())
-        
-        #cost weight this starting from teh wet partials
-        costAccum_slope_xr = _cost_accumulation_wbt(wse_fine_xr2, slope_xr, log=log, 
-                                                    out_dir=os.path.join(out_dir, decay_method),
-                                                    )
-        
-        #convert to meters
-        if not m_to_rad is None:
-
-            log.debug(f'converting distance degrees to meters w/ {m_to_rad:.2f}')
-            costAccum_slope_xr = costAccum_slope_xr*m_to_rad
-        
-        #multiply  by decay fraction
-        log.debug(f'computing decay from cost-accumulated slopes * {decay_frac_m:.3f}')
-        decay_ar = costAccum_slope_xr.data * decay_frac_m
-        
-        
-        
-    else:
-        decay_ar = np.zeros(distance_ar.shape)
+    log.debug(f'infilling wse with decayed growth')
     
-    #===========================================================================
-    # 03.4 infill w/ valid wses
-    #===========================================================================
-    log.debug(f'infilling w/ valids')
-    wse_ar = np.where(
-        np.logical_and(grow_thresh_bar,
-                       (wse_filled_ar-decay_ar)>dem_mar.data
-                       ), wse_filled_ar, np.nan)
-        
+    wse_fine_xr3 = wse_fine_xr2.fillna(
+            np.where(
+                np.logical_and(grow_thresh_bar, wse_filled_decayed_ar>dem_fine_xr.data), #within eligible growth and greater than the DEM
+                wse_filled_decayed_ar, np.nan)
+            ).where(dem_fine_xr.notnull(), np.nan) #re-apply mask
     
-    wse_fine_xr3 = dataarray_from_masked(
-        ma.MaskedArray(wse_ar, mask=np.logical_or(np.isnan(wse_ar), dem_mask)), wse_fine_xr2)
-    
+ 
     
     #===========================================================================
     # post
     #===========================================================================
     if debug:
         if not wse_fine_xr3.isnull().sum()<=wse_fine_xr2.isnull().sum():
-            raise AssertionError(f'dry-cell failed to decrease during {phaseName}')        
+            raise AssertionError(f'dry-cell failed to decrease during {phaseName}')
+        
+        #check all the non-decayed values have not changed
+        assert np.all(wse_fine_xr3.data[wse_fine_xr2.notnull()]==wse_fine_xr2.data[wse_fine_xr2.notnull()])
+        
+        #check we are still dry outside decay buffer
+        assert np.all(np.isnan(wse_fine_xr3.data[~grow_thresh_bar]))
+        
+        #check consistency w/ DEM
+        assert_wse_vs_dem_xr(wse_fine_xr3, dem_fine_xr,  msg=phaseName)
+        
+        #check we have some DP growth
+        
         
         #write the phase result
         to_gtiff(wse_fine_xr3, phaseName)
@@ -867,12 +1044,8 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
             to_gtiff(grow_xr, phaseName)
             
         
-        #write decay
-        if not decay_method=='none':
-            decay_xr = dataarray_from_masked(ma.MaskedArray(decay_ar, mask=dem_fine_xr.isnull().data), dem_fine_xr)
-            decay_xr.attrs['layerName'] = '3decay'
-            to_gtiff(decay_xr, phaseName)
-            to_gtiff(slope_xr, phaseName)
+ 
+            
         
     if write_meta:
         meta_d['distance_fill'] = distance_fill
