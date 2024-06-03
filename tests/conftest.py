@@ -10,6 +10,7 @@ Created on May 25, 2024
 #===============================================================================
 import os, pathlib, pytest, logging, sys, tempfile, pickle, copy, warnings
 import rioxarray
+import numpy as np
 from ..fdsc.hp.dirz import recursive_file_search
 from ..fdsc.hp.xr import coarsen_dataarray, resample_match_xr, wse_to_wsh_xr, xr_to_GeoTiff
 
@@ -25,7 +26,8 @@ if write_to_test_data:
 #===============================================================================
 
 def _geoTiff_to_xr(fp): 
-    return rioxarray.open_rasterio(fp,masked=False).squeeze().rio.write_nodata(-9999)
+    da = rioxarray.open_rasterio(fp,masked=False).squeeze().compute().rio.write_nodata(-9999)
+    return da.where(da!=-9999, np.nan)
 
 def _get_xr(caseName, phase, dataName):
  
@@ -196,7 +198,7 @@ def dem_coarse_xr(caseName, phase, dem_fine_xr, wse_coarse_xr):
 
 
 @pytest.fixture(scope='function')
-def wsh_coarse_fp(caseName, wse_coarse_fp, dem_coarse_xr, tmpdir):
+def wsh_coarse_fp(caseName, wse_coarse_fp, dem_coarse_xr, tmpdir, logger):
     """ most functions are setup to take WSH.. so we want this as a test endpoint"""
     assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
     
@@ -213,7 +215,7 @@ def wsh_coarse_fp(caseName, wse_coarse_fp, dem_coarse_xr, tmpdir):
         
         #from FloodDownscaler2.fdsc.hp.xr import wse_to_wsh_xr, xr_to_GeoTiff
         
-        wsh_xr = wse_to_wsh_xr(dem_coarse_xr, wse_xr)
+        wsh_xr = wse_to_wsh_xr(dem_coarse_xr, wse_xr, allow_low_wse=True, log=logger)
         
         #===========================================================================
         # write

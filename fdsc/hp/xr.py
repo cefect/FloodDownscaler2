@@ -117,25 +117,63 @@ def xr_to_GeoTiff(da, raster_fp, log=None, compress='LZW'):
     
     return raster_fp
 
-def resample_match_xr(da, target_da, resampling=Resampling.nearest,debug=__debug__,
+def resample_match_xr(da, target_da, resampling=Resampling.average,debug=__debug__,
                       **kwargs):
-    """resampling with better treatment for masks"""
+    """resampling w/ rasterio/gdal
+    
+    NOTE: this ignores nulls (does not propagate)
+    
+    """
     
     
     #wse_coarse_xr.fillna(0.0).interp_like(dem_fine_xr, method='linear', assume_sorted=True, kwargs={'fill_value':'extrapolate'})
     nodata = da.rio.nodata
-    resampled_da =  da.fillna(nodata).rio.reproject_match(
-        target_da, nodata=nodata, resampling=resampling, **kwargs)
     
-    #infill nan where there is nodata
+    
+    
+    #===========================================================================
+    # da1 = da #da.fillna(nodata)
+    # resampled_da =  da1.rio.reproject_match(target_da, nodata=nodata, resampling=resampling, 
+    #                                         #src_nodata=nodata, 
+    #                                         **kwargs)
+    # 
+    # #infill nan where there is nodata
+    # resampled_da = resampled_da.where(resampled_da!=nodata, np.nan)
+    #===========================================================================
+    
+    #===========================================================================
+    # handle nodatas
+    #===========================================================================
+    assert not np.any(da.data==nodata), 'got nodata values in xarray. these should be nan'
+    
+    da1 = da
+    if da.isnull().any():
+        da1 = da.fillna(nodata)
+        #=======================================================================
+        # if resampling==Resampling.bilinear:
+        #     
+        # else:
+        #     raise KeyError(f'not sure how to handle nulls for {Resampling.average}')
+        #=======================================================================
+    
+    resampled_da = da1.rio.reproject_match(target_da, nodata=nodata, resampling=resampling,**kwargs).rio.write_nodata(nodata)
+    
+    
+    #===========================================================================
+    # post
+    #===========================================================================
+    """not sure this is necessary"""
     resampled_da = resampled_da.where(resampled_da!=nodata, np.nan)
-    
-    #basic nodata check
-    if debug:
-        if da.isnull().any():
-            assert resampled_da.isnull().any()
-        else:
-            assert not resampled_da.isnull().any()
+    assert not resampled_da.isnull().all()
+    #===========================================================================
+    # #basic nodata check
+    # if debug:
+    #     if da.isnull().any():
+    #         if not resampling==Resampling.nearest:
+    #             assert resampled_da.isnull().any(), f'resampling failed to reptorudce nulls'
+    #     else:
+    #         assert not resampled_da.isnull().any()
+    #===========================================================================
     
         
     return resampled_da
@@ -328,7 +366,7 @@ def wse_to_wsh_xr(dem_xr, wse_xr, log=None, assert_partial=True, allow_low_wse=F
     #===========================================================================
     # check if WSE values were below the DEM
     #===========================================================================
-    bool_ar = delta_mar[~delta_mar.mask].ravel()>0.0
+    bool_ar = delta_mar.data[~delta_mar.mask].ravel()>=0.0
     if not bool_ar.all():
         msg = f'{bool_ar.sum():,}/{bool_ar.size:,} WSE pixels were at or below the DEM'
         if allow_low_wse:
