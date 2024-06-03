@@ -68,7 +68,7 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
  
 @pytest.mark.parametrize('pluvial_params',[
              #dict(reapply_small_groups=False, small_pixel_count=10, filter_depth=None, filter_depth_mode_buffer=0.2), #pretty aggressive
-              dict(reapply_small_groups=False, small_pixel_count=5, filter_depth=None, filter_depth_mode_buffer=0.1), #pretty aggressive  
+              dict(reapply_small_groups=False, small_pixel_count=5, filter_depth=None, filter_depth_mode_buffer=0.1),  
              #dict(reapply_small_groups=False, small_pixel_count=5, filter_depth=None)
                              ])
 @pytest.mark.parametrize('decay_method_d', [

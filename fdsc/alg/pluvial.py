@@ -332,7 +332,7 @@ def downscale_pluvial_xr(
             to_gtiff(wse_to_wsh_xr(dem_coarse_xr, wse_coarse_xr1, 
                                    log=log, assert_partial=False, allow_low_wse=True, debug=False),phaseName)
             
-        assert wse_coarse_xr1.isnull().sum()>wse_coarse_xr.isnull().sum()
+        assert wse_coarse_xr1.isnull().sum()>=wse_coarse_xr.isnull().sum(), 'dry cells increased'
         
         assert np.all(np.isnan(wse_coarse_xr1.data[wse_coarse_xr.isnull()].ravel())), 'some dry raws are not dry anymore'
         
@@ -380,6 +380,7 @@ def downscale_pluvial_xr(
     if debug:
         to_gtiff(wse_coarse_xr2, phaseName)
         
+        assert not wse_coarse_xr2.isnull().all()
         assert wse_coarse_xr2.isnull().sum()>=wse_coarse_xr1.isnull().sum()
         
     if write_meta:

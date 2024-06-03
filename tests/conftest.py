@@ -98,7 +98,7 @@ temp_dir = tempfile.mkdtemp()
 """would be nicer to do this on demand"""
 for caseName,v in toy_test_data_lib.copy().items():
     toy_test_data_lib[caseName]['00_raw'] = dict() 
-    for k in ['dem_fine', 'wse_coarse']:
+    for k in ['dem_fine', 'wse_coarse', 'dem_coarse']:
         ar = v[k+'_ar']
         fp = os.path.join(temp_dir, 'conftest', caseName, k+'.tif')
         toy_test_data_lib[caseName]['00_raw'][k] = ar_to_geoTiff(ar, fp)
@@ -155,6 +155,7 @@ def wse_coarse_fp(caseName, phase):
 @pytest.fixture(scope='function')
 def dem_coarse_fp(caseName, phase):
     assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
+    assert 'dem_coarse' in test_data_lib[caseName][phase], f'missing dem_coarse: {caseName}.{phase}'
     return copy.deepcopy(test_data_lib[caseName][phase]['dem_coarse'])
 
 

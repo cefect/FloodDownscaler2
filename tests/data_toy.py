@@ -108,6 +108,11 @@ test_data_lib = {
                 }
     }
 
+#add coarse
+from ..fdsc.hp.np import apply_block_reduce 
+test_data_lib['case_toy1']['dem_coarse_ar'] = apply_block_reduce(
+    test_data_lib['case_toy1']['dem_fine_ar'], aggscale=3)
+
 #get bounds from test DEM
 s = test_data_lib['case_toy1']['dem_fine_ar'].shape
 bbox_default = sgeo.box(0, 0, s[1], s[0]) #(0.0, 0.0, 6.0, 12.0)
