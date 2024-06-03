@@ -8,7 +8,7 @@ Created on Jun. 2, 2024
 #===============================================================================
 # imports----------
 #===============================================================================
-import os, argparse, logging, datetime, tempfile, pickle, copy
+import os, argparse, logging, datetime, tempfile, pickle, copy, gc
 import rioxarray
 from rasterio.enums import Resampling
 from tqdm.auto import tqdm
@@ -16,6 +16,8 @@ from tqdm.auto import tqdm
 import scipy.ndimage 
 import skimage.graph
 import scipy
+
+import memory_profiler
  
 #from osgeo import gdal
 
@@ -77,11 +79,213 @@ def _get_zero_padded_shape(shape):
 def _wet(da):
     return float(da.isnull().sum().item()/da.size)
 
+def _to_gtiff(da, phaseName, out_dir=None, meta_d=dict(), layerName=None, log=None):
+    
+    assert_xr_geoTiff(da, msg=f'output to_gtiff, {phaseName}.{layerName}')
+    
+    #output path
+    shape_str = _get_zero_padded_shape(da.shape)
+    if layerName is None:
+        layerName = da.attrs['layerName']
+
+    ofp = os.path.join(out_dir, f'{phaseName}_{layerName}_{shape_str}')                
+    assert not os.path.exists(ofp), ofp
+        
+    #write GeoTiff (for debugging)            
+    meta_d[f'{phaseName}_{layerName}'] = xr_to_GeoTiff(da, ofp+'.tif', log=log, 
+                                                       compress=None) 
+    
+    #write pickle (for unit tests) 
+    #_write_to_pick(da, os.path.join(out_dir, phaseName, layerName+'.pkl'))            
+    #wrap
+    
+    
+    return ofp + '.tif'
+
 #===============================================================================
 # RUNNERS------
 #===============================================================================
    
 
+
+def _pluvial_pre(dem_fine_xr, wse_coarse_xr, filter_method, filter_depth, filter_depth_mode_buffer, 
+                 small_pixel_count, dem_coarse_xr, dem_coarse_resampling, wsh_coarse_xr, 
+                 
+                 debug=__debug__, 
+                 write_meta=False, 
+                 out_dir=None, meta_d=dict(), wet_d=dict(), log=None
+                 ):
+    
+    #===========================================================================
+    # defaults
+    #===========================================================================
+    nodata = dem_fine_xr.rio.nodata
+    wse_coarse_mar = wse_coarse_xr.to_masked_array()
+ 
+    #===========================================================================
+    # helpers-------
+    #===========================================================================
+    to_gtiff = lambda da, phaseName, layerName=None:_to_gtiff(da, phaseName, 
+                  layerName=layerName, meta_d=meta_d, log=log, out_dir=out_dir)
+    
+    def upd_wet(da, k=None):
+        if k is None: k = da.attrs['layerName']
+        wet_d[k] = _wet(da)
+    #===========================================================================
+    # pre01 coarse WSH------
+    #===========================================================================
+    """neded by all filter methods"""
+    phaseName = '00_01_WSHcoarse'
+    check_against_dem = False
+    if wsh_coarse_xr is None:
+        log.debug(f'{phaseName} extrapolating coarse WSH from WSE')
+        if dem_coarse_xr is None:
+            #get a lower-bound DEM to ensure we are never above teh WSE
+            log.warning(
+                f'constructing coarse DEM from fine w/ {dem_coarse_resampling}' + '\nthis can lead to poor results in steep terrain' + '\nconsider passing the coarse WSH or coarse DEM explicitly' + '\nat a minimum check the resulting coarse_WSH and change the \'dem_coarse_resampling\' parameter if necessary')
+            """no good way of inferring the correct 'dem_coarse_resampling' parameter
+    
+        needs to match the inferred relation between the coarse and the fine
+    
+        best is for the user to pass the coarse layers excplitily
+    
+        
+    
+        """
+            dem_coarse_xr = resample_match_xr(dem_fine_xr, wse_coarse_xr, resampling=dem_coarse_resampling, 
+                debug=debug)
+        else:
+            check_against_dem = True
+        #get the coarse WSH
+        wsh_coarse_xr = wse_to_wsh_xr(dem_coarse_xr, wse_coarse_xr, log=log, 
+            assert_partial=False, allow_low_wse=True, debug=debug)
+    else:
+        log.debug(f'using user-supplied coarse WSH')
+        
+    #extract some wsh
+    wsh_coarse_mar = wsh_coarse_xr.to_masked_array()
+    domain_coarse_mask = copy.deepcopy(wsh_coarse_mar.mask)
+    
+    #check mask
+    if domain_coarse_mask.any():
+        assert wse_coarse_mar.mask[domain_coarse_mask].all(), f'some WSE cells outside the domain are unmasked'
+    else:
+        log.debug(f'domain is unmasked')
+    log.debug(f'finished WSH construction w/ {wsh_coarse_xr.shape} and {domain_coarse_mask.sum()}/{domain_coarse_mask.size} masked domain cells')
+    
+    if debug:
+        to_gtiff(wsh_coarse_xr, phaseName)
+        if not dem_coarse_xr is None:
+            to_gtiff(dem_coarse_xr, phaseName)
+        #plot for parameterization
+        meta_d['wsh_coarse_histogram_fp'] = plot_histogram_with_stats(
+            wsh_coarse_xr, log=log, out_dir=out_dir)
+    if write_meta:
+        upd_wet(wse_coarse_xr, phaseName)
+    #===========================================================================
+    # get the filter depth-------
+    #===========================================================================
+    if filter_depth is None:
+        log.debug(f'no filter_depth provided. extracting from mode(WSH)')
+        ar = wsh_coarse_xr.round(3).values.ravel()
+        filtered_ar = ar[~np.isnan(ar)] # Remove NaN values
+        mode_result = scipy.stats.mode(filtered_ar)
+        filter_depth = mode_result[0] + filter_depth_mode_buffer
+        log.debug(f' computed as {mode_result}')
+        meta_d['filter_depth'] = filter_depth
+    #===========================================================================
+    # pre02 blanket filter-------
+    #===========================================================================
+    phaseName = '00_02_blanket'
+    if filter_method == 'blanket':
+        #construct the blanket
+        blanket_coarse_xr = xr.apply_ufunc(np.minimum, wsh_coarse_xr, filter_depth
+                                           ).where(wse_coarse_xr.notnull(), 0.0
+                                                   ).where(~domain_coarse_mask, np.nan
+                                                           ).rio.write_nodata(nodata)
+        if debug:
+            assert blanket_coarse_xr.max().item() <= (filter_depth + 1e-5) #floating point issue
+        #check this is dry everywhere the wse is dry (inside the domain)
+            assert np.all(blanket_coarse_xr.data[np.logical_and(wse_coarse_xr.isnull(), ~domain_coarse_mask)] == 0)
+    else:
+        raise KeyError(filter_method)
+    #warp
+    blanket_coarse_xr.attrs['layerName'] = 'blanket_coarse'
+    log.debug(f'blanket built w/ filter_method = {filter_method} and max={blanket_coarse_xr.max().item()}')
+    if debug:
+        to_gtiff(blanket_coarse_xr, phaseName + '_blanket')
+    #===========================================================================
+    # pre03 apply the blanket--------
+    #===========================================================================
+    phaseName = '00_03_filter'
+    #lower hte WSE values
+    wse_coarse_xr1 = wse_coarse_xr - blanket_coarse_xr
+    #detect dry cells
+    """could also get this by comparing against the coarse DEM, but this adds a dependency
+    
+    might need to move this dry detection inside the filter_method?"""
+    dry_bx = wsh_coarse_xr.data <= filter_depth
+    assert dry_bx.any(), f'filter_depth {filter_depth} failed to filter any pixels'
+    wse_coarse_xr1 = wse_coarse_xr1.where(~dry_bx, np.nan)
+    #add some metadata
+    wse_coarse_xr1.attrs = wse_coarse_xr.attrs.copy()
+    wse_coarse_xr1.attrs.update({'filter_method':filter_method, 'filter_depth':filter_depth})
+    log.debug(f'filtered WSE_coarse from {_wet(wse_coarse_xr):.2%} to {_wet(wse_coarse_xr1):.2%} dry cells')
+    #check that this is higher than the DEM everywhere
+    if debug:
+        to_gtiff(wse_coarse_xr1, phaseName)
+        if check_against_dem:
+            assert np.all(wse_coarse_xr1 >= dem_coarse_xr), f'got some negative water depthsa fter blanketing'
+        if not dem_coarse_xr is None:
+    #write the depths as well
+            to_gtiff(wse_to_wsh_xr(dem_coarse_xr, wse_coarse_xr1, 
+                    log=log, assert_partial=False, allow_low_wse=True, debug=False), phaseName)
+        assert wse_coarse_xr1.isnull().sum() >= wse_coarse_xr.isnull().sum(), 'dry cells increased'
+        assert np.all(np.isnan(wse_coarse_xr1.data[wse_coarse_xr.isnull()].ravel())), 'some dry raws are not dry anymore'
+    if write_meta:
+        upd_wet(wse_coarse_xr1, phaseName)
+    #===========================================================================
+    # pre04 remove small groups------------
+    #===========================================================================
+    phaseName = '00_03_smalls'
+    if small_pixel_count > 0:
+        wse_mar = wse_coarse_xr1.to_masked_array()
+        inun_fine_ar = np.where(wse_mar.mask, 0.0, 1.0) #0:dry, 1:wet
+        # produce integer labels for each connected component
+        #0-valued pixels are considered as background pixels
+        labels, nlabels = skimage.measure.label(
+            inun_fine_ar, 
+            connectivity=1, 
+            return_num=True)
+        log.debug(f'identified {nlabels} groups')
+        #get the size of each region
+        props = skimage.measure.regionprops_table(labels, properties=('label', 'area'))
+        ser = pd.Series(dict(zip(props['label'], props['area']))).astype(int).sort_values().rename('pixel_cnt')
+        #identify regions below the threshold
+        small_labels_ar = ser[ser <= small_pixel_count].index.values
+        log.debug(f'found {len(small_labels_ar)}/{nlabels} regions smaller than {small_pixel_count} pixels')
+        #mask these out
+        small_bar = np.isin(labels, small_labels_ar)
+        assert small_bar.any()
+        log.debug(f'filtering {small_bar.sum()} pixels falling in small regions')
+        wse_coarse_xr2 = wse_coarse_xr1.where(~small_bar, np.nan)
+    else:
+        wse_coarse_xr2 = wse_coarse_xr1
+        small_bar = None
+    if debug:
+        to_gtiff(wse_coarse_xr2, phaseName)
+        assert not wse_coarse_xr2.isnull().all()
+        assert wse_coarse_xr2.isnull().sum() >= wse_coarse_xr1.isnull().sum()
+    if write_meta:
+        upd_wet(wse_coarse_xr2, phaseName)
+        
+    #===========================================================================
+    # write some to disc
+    #===========================================================================
+        
+    return wse_coarse_xr2, small_bar, wse_coarse_xr1,  blanket_coarse_xr, filter_depth
+
+@memory_profiler.profile 
 def downscale_pluvial_xr(
         dem_fine_xr, wse_coarse_xr,
         
@@ -160,13 +364,14 @@ def downscale_pluvial_xr(
     # setup
     #===========================================================================
     wse_coarse_mar = wse_coarse_xr.to_masked_array()
-    
+    wet_d = dict()
+    meta_d=dict()
 
         
     if write_meta or debug:
         write_meta=True
         meta_d.update(dict(filter_depth=filter_depth, filter_method=filter_method))
-        wet_d = dict()
+        
         def upd_wet(da, k=None):
             if k is None: k = da.attrs['layerName']
             wet_d[k] = _wet(da)
@@ -174,228 +379,34 @@ def downscale_pluvial_xr(
         
     
     if debug:
-        
-        def to_gtiff(da, phaseName, layerName=None):
-            
-            assert_xr_geoTiff(da, msg=f'output to_gtiff, {phaseName}.{layerName}')
-            
-            #output path
-            shape_str = _get_zero_padded_shape(da.shape)
-            if layerName is None:
-                layerName = da.attrs['layerName']
+        to_gtiff = lambda da, phaseName, layerName=None:_to_gtiff(da, phaseName, 
+                  layerName=layerName, meta_d=meta_d, log=log, out_dir=out_dir)
  
-            ofp = os.path.join(out_dir, f'{phaseName}_{layerName}_{shape_str}')                
-            assert not os.path.exists(ofp), ofp
-                
-            #write GeoTiff (for debugging)            
-            meta_d[f'{phaseName}_{layerName}'] = xr_to_GeoTiff(da, ofp+'.tif', log=log, compress=None) 
-            
-            #write pickle (for unit tests) 
-            #_write_to_pick(da, os.path.join(out_dir, phaseName, layerName+'.pkl'))            
-            #wrap
-            
-            
-            return ofp + '.tif'
-    #===========================================================================
-    # pre01 coarse WSH------
-    #===========================================================================
-    """neded by all filter methods"""    
-    phaseName='00_01_WSHcoarse'
-    
-    check_against_dem=False 
-    if wsh_coarse_xr is None:
+
         
-        log.debug(f'{phaseName} extrapolating coarse WSH from WSE')
-        if dem_coarse_xr is None:
-            #get a lower-bound DEM to ensure we are never above teh WSE                
-            log.warning(f'constructing coarse DEM from fine w/ {dem_coarse_resampling}'+\
-                        '\nthis can lead to poor results in steep terrain'+\
-                        '\nconsider passing the coarse WSH or coarse DEM explicitly'+\
-                        '\nat a minimum check the resulting coarse_WSH and change the \'dem_coarse_resampling\' parameter if necessary')
-            
-            """no good way of inferring the correct 'dem_coarse_resampling' parameter
-            needs to match the inferred relation between the coarse and the fine
-            best is for the user to pass the coarse layers excplitily
-            
-            """
-            dem_coarse_xr = resample_match_xr(dem_fine_xr,wse_coarse_xr,resampling=dem_coarse_resampling, 
-                                              debug=debug)
-            
-        else:
-            check_against_dem = True
-            
-        
-        #get the coarse WSH
-        wsh_coarse_xr = wse_to_wsh_xr(dem_coarse_xr, wse_coarse_xr, log=log,
-                                      assert_partial=False, allow_low_wse=True, debug=debug)
  
-    else:
-        log.debug(f'using user-supplied coarse WSH')
-        
-    #extract some wsh
-    wsh_coarse_mar = wsh_coarse_xr.to_masked_array()
-    domain_coarse_mask = copy.deepcopy(wsh_coarse_mar.mask)
-    
-    #check mask
-    if domain_coarse_mask.any():
-        assert wse_coarse_mar[domain_coarse_mask].all(), f'some WSE cells outside the domain are unmasked'
-    else:
-        log.debug(f'domain is unmasked')
-        
-    log.debug(f'finished WSH construction w/ {wsh_coarse_xr.shape} and {domain_coarse_mask.sum()}/{domain_coarse_mask.size} masked domain cells')
-    
-    
-    if debug:        
-        to_gtiff(wsh_coarse_xr, phaseName)
-        if not dem_coarse_xr is None:to_gtiff(dem_coarse_xr, phaseName)
-        #plot for parameterization
-        meta_d['wsh_coarse_histogram_fp'] = plot_histogram_with_stats(
-                wsh_coarse_xr, log=log, out_dir=out_dir)
-    
-    if write_meta:
-        upd_wet(wse_coarse_xr, phaseName)
-        
     #===========================================================================
-    # get the filter depth-------
+    # pre-process
     #===========================================================================
-    if filter_depth is None:
-        log.debug(f'no filter_depth provided. extracting from mode(WSH)')
-        ar = wsh_coarse_xr.round(3).values.ravel()
-        filtered_ar = ar[~np.isnan(ar)]  # Remove NaN values
-        mode_result = scipy.stats.mode(filtered_ar)
-        filter_depth = mode_result[0]+filter_depth_mode_buffer
-        log.debug(f' computed as {mode_result}')
-        meta_d['filter_depth'] = filter_depth
- 
-    
-    #===========================================================================
-    # pre02 blanket filter-------
-    #===========================================================================
-    phaseName='00_02_blanket'
-    
-    if filter_method=='blanket':
+    log.info(f'starting pluvial pre-processing')
+    wse_coarse_xr2, small_bar, wse_coarse_xr1,  blanket_coarse_xr, filter_depth= _pluvial_pre(dem_fine_xr, wse_coarse_xr, filter_method, filter_depth,                                  
+                                  filter_depth_mode_buffer, small_pixel_count, dem_coarse_xr,                                  
+                                  dem_coarse_resampling, wsh_coarse_xr, 
+                                  debug=debug, write_meta=write_meta,                                  
+                                  out_dir=out_dir, meta_d=meta_d, wet_d=wet_d, log=log)
         
-        #construct the blanket 
-        blanket_coarse_xr = xr.apply_ufunc(np.minimum, wsh_coarse_xr, filter_depth
-                        ).where(wse_coarse_xr.notnull(), 0.0).where(~domain_coarse_mask, np.nan).rio.write_nodata(nodata)
- 
-        
-        
-        if debug:
-            assert blanket_coarse_xr.max().item()<=(filter_depth+1e-5) #floating point issue
-            
-            #check this is dry everywhere the wse is dry (inside the domain)            
-            assert np.all(blanket_coarse_xr.data[np.logical_and(wse_coarse_xr.isnull(), ~domain_coarse_mask)]==0)
- 
-    
-    else:
-        raise KeyError(filter_method)
-    
-    #warp
-    blanket_coarse_xr.attrs['layerName'] = 'blanket_coarse'
-    log.debug(f'blanket built w/ filter_method = {filter_method} and max={blanket_coarse_xr.max().item()}')
-    
-    if debug:        
-        to_gtiff(blanket_coarse_xr, phaseName +'_blanket')
-    
-    
-    #===========================================================================
-    # pre03 apply the blanket--------
-    #===========================================================================
-    phaseName='00_03_filter'
-    
-    #lower hte WSE values
-    wse_coarse_xr1 = wse_coarse_xr-blanket_coarse_xr
-    
-    #detect dry cells
-    """could also get this by comparing against the coarse DEM, but this adds a dependency
-    might need to move this dry detection inside the filter_method?"""
-    dry_bx = (wsh_coarse_xr.data<=filter_depth)
-    assert dry_bx.any(), f'filter_depth {filter_depth} failed to filter any pixels'
-    wse_coarse_xr1 = wse_coarse_xr1.where(~dry_bx, np.nan)
-    
-    #add some metadata
-    wse_coarse_xr1.attrs = wse_coarse_xr.attrs.copy()
-    wse_coarse_xr1.attrs.update({'filter_method':filter_method, 'filter_depth':filter_depth})
-    
-    log.debug(f'filtered WSE_coarse from {_wet(wse_coarse_xr):.2%} to {_wet(wse_coarse_xr1):.2%} dry cells')
- 
-    #check that this is higher than the DEM everywhere
-    if debug:
-        to_gtiff(wse_coarse_xr1, phaseName)
-        
-        if check_against_dem:        
-            assert np.all(wse_coarse_xr1>=dem_coarse_xr), f'got some negative water depthsa fter blanketing'
-            
-        if not dem_coarse_xr is None:
-            #write the depths as well
-            to_gtiff(wse_to_wsh_xr(dem_coarse_xr, wse_coarse_xr1, 
-                                   log=log, assert_partial=False, allow_low_wse=True, debug=False),phaseName)
-            
-        assert wse_coarse_xr1.isnull().sum()>=wse_coarse_xr.isnull().sum(), 'dry cells increased'
-        
-        assert np.all(np.isnan(wse_coarse_xr1.data[wse_coarse_xr.isnull()].ravel())), 'some dry raws are not dry anymore'
-        
-        
-             
-    if write_meta:
-        upd_wet(wse_coarse_xr1, phaseName)
-        
-    #===========================================================================
-    # pre04 remove small groups------------
-    #===========================================================================
-    phaseName='00_03_smalls'
-    if small_pixel_count>0:
-        wse_mar = wse_coarse_xr1.to_masked_array()
-        inun_fine_ar = np.where(wse_mar.mask, 0.0, 1.0) #0:dry, 1:wet
-        
-        # produce integer labels for each connected component
-        #0-valued pixels are considered as background pixels
-        labels, nlabels = skimage.measure.label(
-            inun_fine_ar, 
-            connectivity=1, 
-            return_num=True)
-        
-        log.debug(f'identified {nlabels} groups')
-        
-        #get the size of each region
-        props = skimage.measure.regionprops_table(labels, properties=('label', 'area'))        
-        ser = pd.Series(dict(zip(props['label'], props['area']))).astype(int).sort_values().rename('pixel_cnt')
-        
-        #identify regions below the threshold
-        small_labels_ar = ser[ser<=small_pixel_count].index.values
-        
-        log.debug(f'found {len(small_labels_ar)}/{nlabels} regions smaller than {small_pixel_count} pixels')
-        
-        #mask these out
-        small_bar = np.isin(labels, small_labels_ar)
-        assert small_bar.any()
-        log.debug(f'filtering {small_bar.sum()} pixels falling in small regions')
-        wse_coarse_xr2 = wse_coarse_xr1.where(~small_bar, np.nan)
-        
-    else:
-        wse_coarse_xr2 = wse_coarse_xr1
-        small_bar=None
- 
-    if debug:
-        to_gtiff(wse_coarse_xr2, phaseName)
-        
-        assert not wse_coarse_xr2.isnull().all()
-        assert wse_coarse_xr2.isnull().sum()>=wse_coarse_xr1.isnull().sum()
-        
-    if write_meta:
-        upd_wet(wse_coarse_xr2, phaseName)
-        
-             
+    gc.collect()
     #===========================================================================
     # WSE extrapolation--------
     #===========================================================================
-    log.debug(f'executing downscaler w/ filtered WSE')
+    log.info(f'executing downscaler w/ filtered WSE')
     wse_fine_xr_extrap, meta_d =  wse_proj_func(
         dem_fine_xr, wse_coarse_xr2,
         logger=logger, debug=debug, out_dir=out_dir,meta_d=meta_d,
         **kwargs)
-    log.debug('extrpolation finished... post-processing for fluvial')
+    log.info('extrpolation finished... post-processing for fluvial')
+    
+    gc.collect()
     #===========================================================================
     # post01 reapplly small groups-------
     #===========================================================================
@@ -426,38 +437,35 @@ def downscale_pluvial_xr(
         wse_fine_xr01 = wse_fine_xr_extrap
         
 
+    
  
-   
-    #===========================================================================
-    # post01 resample blanket-----------
-    #===========================================================================
-    phaseName='99_02_resampleBlanket'
-    log.debug(f'resampling blanket to match hi-res')
-    
-    blanket_fine_xr = resample_match_xr(blanket_coarse_xr,wse_fine_xr01,resampling=Resampling.bilinear,debug=debug)
-    
-    if debug:
-        to_gtiff(blanket_fine_xr, phaseName)
-        assert np.all(blanket_fine_xr<=filter_depth+1e-5)
-        assert np.all(blanket_fine_xr>=0.0)
-        
     
     #===========================================================================
     # post02 reapply blanket----------
     #===========================================================================
-    phaseName='99_03_removeBlanket'
+    phaseName='99_02_removeBlanket'
     
     #add blanket to wet cells
     
     if filter_method=='blanket':
+        
+        blanket_fine_xr = resample_match_xr(blanket_coarse_xr,
+                                wse_fine_xr01,resampling=Resampling.bilinear,debug=debug)
     
         #anywhere blanket has values, use the WSE (DEM where dry) + blanket
         wse_fine_xr1 = wse_fine_xr01.where(blanket_fine_xr.isnull(),  
                  wse_fine_xr01.fillna(dem_fine_xr) + blanket_fine_xr)
         
+        if debug:
+            to_gtiff(blanket_fine_xr, phaseName)
+            assert np.all(blanket_fine_xr<=filter_depth+1e-5)
+            assert np.all(blanket_fine_xr>=0.0)
+        
     else:
         raise KeyError(filter_method)
     
+    
+    del wse_fine_xr_extrap
     
     if debug:
  

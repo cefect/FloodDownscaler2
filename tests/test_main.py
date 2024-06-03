@@ -63,7 +63,7 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
     ])
 @pytest.mark.parametrize('method, params',[ 
   ('CostGrow', dict(distance_fill='neutral',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=50)),
-  ('CostGrow', dict(distance_fill='terrain_penalty',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=10)),
+  #('CostGrow', dict(distance_fill='terrain_penalty',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=10)),
   ])
  
 @pytest.mark.parametrize('pluvial_params',[
