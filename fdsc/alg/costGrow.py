@@ -83,7 +83,7 @@ def _get_zero_padded_shape(shape):
 
 
 def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=None,
-                                cd_backend='wbt',out_dir=None,m_to_rad=None, 
+                                cd_backend='wbt',out_dir=None,m_to_rad=1.0, 
                                 **kwargs
                                 ):
     
@@ -104,17 +104,26 @@ def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=Non
     
     #get delta
     log.debug(f'computing fine delta')
-    delta_xr = dem_fine_xr - wse_filled_xr1
+    delta_xr = wse_filled_xr1 - dem_fine_xr #positve values have small cost and negative values high cost
     
     #normalize cost surface
  
     log.debug(f'computing cost surface')
-    cost_xr = xr.where(delta_xr < 0, 0.0, delta_xr).fillna(999).round(1)
+    #cost_xr = xr.where(delta_xr > 0, 0.01, np.abs(delta_xr)+0.01).fillna(999).round(1)
+    cost_xr = xr.where(delta_xr > 0, 1.0, 1.0+np.abs(delta_xr))
+    #cost_xr = dataarray_from_masked(ma.MaskedArray(np.ones(delta_xr.shape)), delta_xr)
+    
+ 
+    
     cost_xr.rio.write_crs(dem_fine_xr.rio.crs, inplace=True) #not sure where this got lost
     
-    if not m_to_rad==1.0:
-        raise IOError('dome')
-        cost_xr
+    #===========================================================================
+    # if not m_to_rad==1.0:
+    #     log.debug(f'refactoring cost to radians {m_to_rad:.2f}')
+    #     """I don't think this matters much... but should normalize some parameters between crs"""
+    #     cost_xr = cost_xr/m_to_rad
+    #===========================================================================
+ 
     
     #===========================================================================
     # #impute w/ cost
@@ -210,6 +219,7 @@ def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
     
     to_gtif = lambda da, fn: xr_to_GeoTiff(da, os.path.join(out_dir, fn), log)
     
+    assert np.min(cost_xr)>=0.0
     
     #===========================================================================
     # init wbt
@@ -944,10 +954,14 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     #===========================================================================
     if not dp_coarse_pixel_max is None:
         #True=within region of interest
-        grow_thresh_bar = distance_ar/(downscale*pixel_size_m)<dp_coarse_pixel_max
+        distance_coarse_pixel_ar = distance_ar/pixel_size_m/downscale #convert back to pixels
+        grow_thresh_bar = distance_coarse_pixel_ar<dp_coarse_pixel_max
         log.debug(f'w/ dp_coarse_pixel_max={dp_coarse_pixel_max} masked {np.invert(grow_thresh_bar).sum()/grow_thresh_bar.size:.4f} of pixels')
-        assert not grow_thresh_bar.all(), f'passed dp_coarse_pixel_max={dp_coarse_pixel_max} but max distance/downscale={np.max(distance_ar/downscale)}'+\
-                '\npass a smaller \'dp_coarse_pixel_max\' or pass None to remove pixel-based thresholding'
+        if not grow_thresh_bar.all():
+            #decided to allow this
+            log.warning(f'passed dp_coarse_pixel_max={dp_coarse_pixel_max}'+\
+            f' but max distance/downscale={np.max(distance_coarse_pixel_ar)}'+\
+            '\npass a smaller \'dp_coarse_pixel_max\' or pass None to remove pixel-based thresholding')
     else:
         log.debug('no pixel-based growth limitation')
         grow_thresh_bar = np.full(distance_ar.shape, True)

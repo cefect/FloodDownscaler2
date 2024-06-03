@@ -15,6 +15,7 @@ from tqdm.auto import tqdm
 
 import scipy.ndimage 
 import skimage.graph
+import scipy
  
 #from osgeo import gdal
 
@@ -87,6 +88,7 @@ def downscale_pluvial_xr(
         wse_proj_func = None,
         filter_method='blanket',
         filter_depth=0.1,
+        filter_depth_mode_buffer=0.01, 
         small_pixel_count=5,
         reapply_small_groups=False,
         
@@ -129,7 +131,10 @@ def downscale_pluvial_xr(
             
     
     filter_depth: flaot
-        depth used for filtering. see 'filter_method' for 
+        depth used for pluvial filtering. if None, computed from the mode + filter_depth_mode_buffer
+        
+    filter_depth_mode_buffer: float
+        when filter_depth=None (computed from mode), this buffer willb e applied
         
     small_pixel_count: int
         count of pixels for groups to remove then re-apply
@@ -249,6 +254,19 @@ def downscale_pluvial_xr(
     
     if write_meta:
         upd_wet(wse_coarse_xr, phaseName)
+        
+    #===========================================================================
+    # get the filter depth-------
+    #===========================================================================
+    if filter_depth is None:
+        log.debug(f'no filter_depth provided. extracting from mode(WSH)')
+        ar = wsh_coarse_xr.round(3).values.ravel()
+        filtered_ar = ar[~np.isnan(ar)]  # Remove NaN values
+        mode_result = scipy.stats.mode(filtered_ar)
+        filter_depth = mode_result[0]+filter_depth_mode_buffer
+        log.debug(f' computed as {mode_result}')
+        meta_d['filter_depth'] = filter_depth
+ 
     
     #===========================================================================
     # pre02 blanket filter-------
@@ -292,7 +310,8 @@ def downscale_pluvial_xr(
     #detect dry cells
     """could also get this by comparing against the coarse DEM, but this adds a dependency
     might need to move this dry detection inside the filter_method?"""
-    dry_bx = (wsh_coarse_xr<=filter_depth).data
+    dry_bx = (wsh_coarse_xr.data<=filter_depth)
+    assert dry_bx.any(), f'filter_depth {filter_depth} failed to filter any pixels'
     wse_coarse_xr1 = wse_coarse_xr1.where(~dry_bx, np.nan)
     
     #add some metadata

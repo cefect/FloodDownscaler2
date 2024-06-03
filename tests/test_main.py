@@ -58,18 +58,16 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
 @pytest.mark.parametrize('caseName',[ 
     'case_ruth',
     ])
-@pytest.mark.parametrize('method, params',[
-                         ('CostGrow', dict(
-                             distance_fill='neutral', 
-                             filter_depth=0.12, 
+@pytest.mark.parametrize('method, params',[ 
+  #('CostGrow', dict(distance_fill='neutral',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=50)),
+  ('CostGrow', dict(distance_fill='terrain_penalty',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=10)),
+  ])
  
-                             distance_fill_method='distance_transform_edt',
-                             dp_coarse_pixel_max=50,
- 
-                             reapply_small_groups=False,
-                             )),
-                         #('CostGrow', dict(distance_fill='terrain_penalty')),
-                         ])
+@pytest.mark.parametrize('pluvial_params',[
+             #dict(reapply_small_groups=False, small_pixel_count=10, filter_depth=None, filter_depth_mode_buffer=0.2), #pretty aggressive
+              dict(reapply_small_groups=False, small_pixel_count=5, filter_depth=None, filter_depth_mode_buffer=0.1), #pretty aggressive  
+             #dict(reapply_small_groups=False, small_pixel_count=5, filter_depth=None)
+                             ])
 @pytest.mark.parametrize('decay_method_d', [
     #===========================================================================
     # {
@@ -97,11 +95,20 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
         # 'slope_power':dict(n=1.3, c=0.001)  #too liberal
         # },
         #=======================================================================
-                {
-        'linear':dict(decay_frac=0.005), #looks good
-        #'slope_linear':dict(decay_frac=0.001), 
-        'slope_power':dict(n=1.4, c=0.001)   
-        },
+        #=======================================================================
+        #         {
+        # 'linear':dict(decay_frac=0.005), #looks good
+        # #'slope_linear':dict(decay_frac=0.001), 
+        # 'slope_power':dict(n=1.4, c=0.001)   
+        # },
+        #=======================================================================
+        #=======================================================================
+        #     {
+        # 'linear':dict(decay_frac=0.01), 'slope_power':dict(n=1.3, c=0.005) #too much spill   
+        # },
+        #=======================================================================
+        #{'linear':dict(decay_frac=0.01), 'slope_power':dict(n=1.4, c=0.005)}, #too aggressive
+         {'linear':dict(decay_frac=0.005), 'slope_power':dict(n=1.4, c=0.001)}, #looks nice
     ])
 @pytest.mark.parametrize('use_wsh', [
     True, 
@@ -114,7 +121,7 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
 def test_downscale_pluvial_wse_raster(dem_fine_fp, wse_coarse_fp, 
                                       wsh_coarse_fp,dem_coarse_fp,
                               method, params, decay_method_d,
-                              use_wsh,use_dem,
+                              use_wsh,use_dem,pluvial_params,
                               tmpdir, logger, caseName):
     
     print()
@@ -136,4 +143,4 @@ def test_downscale_pluvial_wse_raster(dem_fine_fp, wse_coarse_fp,
          pluvial=True, 
          wsh_coarse_fp=wsh_coarse_fp,dem_coarse_fp=dem_coarse_fp,
          decay_method_d=decay_method_d,
-         **params) 
+         **params, **pluvial_params) 
