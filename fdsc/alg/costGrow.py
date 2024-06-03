@@ -7,7 +7,7 @@ Created on May 25, 2024
 #===============================================================================
 # imports----------
 #===============================================================================
-import os, argparse, logging, datetime, tempfile, pickle, copy
+import os, argparse, logging, datetime, tempfile, pickle, copy, gc
 import rioxarray
 from rasterio.enums import Resampling
 from tqdm.auto import tqdm
@@ -31,6 +31,8 @@ from ..coms import shape_ratio, set_da_layerNames
 import geopandas as gpd
 from shapely.geometry import Point, LineString
 import pyproj
+
+import memory_profiler
 
 #===============================================================================
 # HELPERS------
@@ -698,6 +700,162 @@ def _dp_decay(dem_fine_xr, wse_fine_xr,
         
     return decay_master_ar, meta_d
 
+
+def _01_resamp(dem_fine_xr, wse_coarse_xr, to_gtiff, upd_wet, 
+               write_meta=False, 
+               debug=False, phaseName='pHase', **kwargs):
+    
+    
+    wse_fine_xr1 = resample_match_xr(wse_coarse_xr, dem_fine_xr, resampling=Resampling.bilinear)
+    wse_fine_xr1.attrs['layerName'] = 'wse_fine'
+    if write_meta:
+        upd_wet(wse_fine_xr1, phaseName)
+        
+    if debug:
+        ofp = to_gtiff(wse_fine_xr1, phaseName)
+        assert_wse_xr(wse_fine_xr1, msg=f'{phaseName}\n{ofp}')
+        assert_equal_raster_metadata(wse_fine_xr1, dem_fine_xr, msg=f'{phaseName}\n{ofp}')
+    return wse_fine_xr1
+
+
+def _02_wetPartials(wse_fine_xr1, dem_fine_xr, 
+                    to_gtiff, upd_wet,
+                    write_meta=False, debug=__debug__, log=None, **kwargs):
+    #===========================================================================
+    # defaults
+    #===========================================================================
+    phaseName = '02_wp'
+    nodata=wse_fine_xr1.rio.nodata
+    log.info(phaseName)
+    
+    dem_mar = dem_fine_xr.to_masked_array()
+    
+    
+    wse_mar = wse_fine_xr1.to_masked_array()
+    wse_mar2 = ma.MaskedArray(np.nan_to_num(wse_mar.data, nodata), 
+        mask=np.logical_or(
+            np.logical_or(dem_mar.mask, wse_mar.mask), #union of masks
+            wse_mar <= dem_mar)) #below ground water
+    
+    wse_fine_xr2 = dataarray_from_masked(wse_mar2, wse_fine_xr1)
+    #===========================================================================
+    # post
+    #===========================================================================
+    if write_meta:
+        upd_wet(wse_fine_xr2, phaseName)
+    if debug:
+        if not wse_mar.mask.sum() <= wse_mar2.mask.sum():
+            raise AssertionError('expected wet-cell count to decrease during wet-partial treatment')
+        to_gtiff(wse_fine_xr2, phaseName)
+        assert_xr_geoTiff(wse_fine_xr2)
+    return wse_fine_xr2
+
+
+@memory_profiler.profile 
+def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr, 
+                    downscale, distance_fill, distance_fill_method,                    
+                    decay_method_d, dp_coarse_pixel_max, m_to_rad, pixel_size_m,
+                     to_gtiff,upd_wet,
+                    write_meta=False, debug=__debug__, log=None, meta_d=dict(), out_dir=None):
+    
+    phaseName = '03_dp'
+    log.info(f'{phaseName} w/ distance_fill={distance_fill}')
+    #needed by filter ops
+    f = getattr(scipy.ndimage, distance_fill_method)
+    distance_ar = f(wse_fine_xr2.isnull().data.astype(int), return_indices=False, 
+                    return_distances=True) * pixel_size_m
+                    
+    if debug:
+        distance_xr = dataarray_from_masked(ma.MaskedArray(distance_ar, mask=False), dem_fine_xr)
+        distance_xr.attrs['layerName'] = '0distance'
+        to_gtiff(distance_xr, phaseName)
+    #===========================================================================
+    #    03.1 growth threshold------
+    #===========================================================================
+    if not dp_coarse_pixel_max is None:
+        #True=within region of interest
+        distance_coarse_pixel_ar = distance_ar / pixel_size_m / downscale #convert back to pixels
+        grow_thresh_bar = distance_coarse_pixel_ar < dp_coarse_pixel_max
+        log.debug(f'w/ dp_coarse_pixel_max={dp_coarse_pixel_max} masked {np.invert(grow_thresh_bar).sum()/grow_thresh_bar.size:.4f} of pixels')
+        if not grow_thresh_bar.all():
+            #decided to allow this
+            log.warning(
+                f'passed dp_coarse_pixel_max={dp_coarse_pixel_max}' + f' but max distance/downscale={np.max(distance_coarse_pixel_ar)}' + '\npass a smaller \'dp_coarse_pixel_max\' or pass None to remove pixel-based thresholding')
+    else:
+        log.debug('no pixel-based growth limitation')
+        grow_thresh_bar = np.full(distance_ar.shape, True)
+    #===========================================================================
+    #    03.2 get imputed/filled WSE---------
+    #===========================================================================
+    """seems like there should be  away to apply grow_thresh_bar to speed up the distance calcs below"""
+    if distance_fill == 'neutral':
+        wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName), 
+            method=distance_fill_method)
+        if debug:
+            wse_filled_xr = dataarray_from_masked(ma.MaskedArray(wse_filled_ar), wse_fine_xr2)
+    elif distance_fill == 'terrain_penalty':
+        wse_filled_xr = _distance_fill_cost_terrain(wse_fine_xr2, dem_fine_xr, 
+            wse_coarse_xr, log=log.getChild(phaseName), 
+            out_dir=out_dir, m_to_rad=m_to_rad)
+        wse_filled_ar = wse_filled_xr.data
+    else:
+        raise KeyError(distance_fill)
+    #===========================================================================
+    #    03.3 decay--------
+    #===========================================================================
+    #construct the combined decay values
+    if len(decay_method_d) > 0:
+        decay_ar, d = _dp_decay(dem_fine_xr, wse_fine_xr2, 
+            decay_method_d=decay_method_d, 
+            m_to_rad=m_to_rad, pixel_size_m=pixel_size_m, 
+            distance_ar=distance_ar, 
+            logger=log, debug=debug, out_dir=os.path.join(out_dir, 'decay'))
+        meta_d.update(d)
+    else:
+        log.warning(f'no decay applied')
+        decay_ar = np.zeros(wse_filled_ar.shape)
+    #apply the decay to the WSE
+    wse_filled_decayed_ar = wse_filled_ar - decay_ar
+    if debug:
+        #check all the pre-decay pixels are hte same
+        assert np.all(
+            np.isclose(wse_filled_decayed_ar[wse_fine_xr2.notnull()], 
+                wse_fine_xr2.data[wse_fine_xr2.notnull()], 1e-5))
+    #===========================================================================
+    #    03.4 infill w/ valid wses ------------
+    #===========================================================================
+    log.debug(f'infilling wse with decayed growth')
+    wse_fine_xr3 = wse_fine_xr2.fillna(np.where(np.logical_and(grow_thresh_bar, wse_filled_decayed_ar > dem_fine_xr.data), #within eligible growth and greater than the DEM
+            wse_filled_decayed_ar, np.nan)).where(dem_fine_xr.notnull(), np.nan) #re-apply mask
+    #===========================================================================
+    # post
+    #===========================================================================
+    if debug:
+        if not wse_fine_xr3.isnull().sum() <= wse_fine_xr2.isnull().sum():
+            raise AssertionError(f'dry-cell failed to decrease during {phaseName}')
+        #check all the non-decayed values have not changed
+        assert np.all(wse_fine_xr3.data[wse_fine_xr2.notnull()] == wse_fine_xr2.data[wse_fine_xr2.notnull()])
+        #check we are still dry outside decay buffer
+        assert np.all(np.isnan(wse_fine_xr3.data[~grow_thresh_bar]))
+        #check consistency w/ DEM
+        assert_wse_vs_dem_xr(wse_fine_xr3, dem_fine_xr, msg=phaseName)
+        #check we have some DP growth
+        #write the phase result
+        to_gtiff(wse_fine_xr3, phaseName)
+        #write the wse grow/filled
+        wse_filled_xr.attrs['layerName'] = '2wse_fill'
+        to_gtiff(wse_filled_xr, phaseName)
+        #write growth threshold
+        if not dp_coarse_pixel_max is None:
+            grow_xr = dataarray_from_masked(ma.MaskedArray(grow_thresh_bar.astype(float), mask=dem_fine_xr.isnull().data), dem_fine_xr)
+            grow_xr.attrs['layerName'] = '1grow_thresh'
+            to_gtiff(grow_xr, phaseName)
+    if write_meta:
+        meta_d['distance_fill'] = distance_fill
+        upd_wet(wse_fine_xr3, phaseName)
+    return wse_fine_xr3
+
+@memory_profiler.profile 
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 distance_fill='neutral',
@@ -710,7 +868,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                 dp_coarse_pixel_max=10,
                           
                  logger=None,
-                 write_meta=True, meta_d=dict(),
+                 write_meta=True, meta_d=dict(), wet_d=dict(),
                  debug=__debug__,
                  out_dir=None,
                  ):
@@ -750,8 +908,8 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     
  
     nodata = dem_fine_xr.rio.nodata
-    dem_mar = dem_fine_xr.to_masked_array()
-    dem_mask = dem_mar.mask
+    #dem_mar = dem_fine_xr.to_masked_array()
+    dem_mask = dem_fine_xr.isnull().data
     
     if not dem_fine_xr.rio.crs.linear_units == 'metre':
         resolution_meters_t = approximate_resolution_meters(dem_fine_xr)        
@@ -776,33 +934,33 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     #===========================================================================
     # function helpers------
     #===========================================================================
-    if debug:
-        out_dir = get_od(out_dir)
-        log.debug(f'out_dir set to \n    {out_dir}')
+    #if debug:
+    out_dir = get_od(out_dir)
+    log.debug(f'out_dir set to \n    {out_dir}')
+    
+    def to_gtiff(da, phaseName, layerName=None):
         
-        def to_gtiff(da, phaseName, layerName=None):
+        assert_xr_geoTiff(da, msg=f'output to_gtiff, {phaseName}.{layerName}')
+        
+        #output path
+        shape_str = _get_zero_padded_shape(da.shape)
+        if layerName is None:
+            layerName = da.attrs['layerName']
+    
+        ofp = os.path.join(out_dir, f'{phaseName}_{layerName}_{shape_str}')
             
-            assert_xr_geoTiff(da, msg=f'output to_gtiff, {phaseName}.{layerName}')
+        assert not os.path.exists(ofp), ofp
             
-            #output path
-            shape_str = _get_zero_padded_shape(da.shape)
-            if layerName is None:
-                layerName = da.attrs['layerName']
- 
-            ofp = os.path.join(out_dir, f'{phaseName}_{layerName}_{shape_str}')
-                
-            assert not os.path.exists(ofp), ofp
-                
-            #write GeoTiff (for debugging)
-            
-            meta_d[f'{phaseName}_{layerName}'] = xr_to_GeoTiff(da, ofp+'.tif', log=log, compress=None) 
-            
-            #write pickle (for unit tests) 
-            #_write_to_pick(da, os.path.join(out_dir, phaseName, layerName+'.pkl'))            
-            #wrap
-            
-            
-            return ofp + '.tif'
+        #write GeoTiff (for debugging)
+        
+        meta_d[f'{phaseName}_{layerName}'] = xr_to_GeoTiff(da, ofp+'.tif', log=log, compress=None) 
+        
+        #write pickle (for unit tests) 
+        #_write_to_pick(da, os.path.join(out_dir, phaseName, layerName+'.pkl'))            
+        #wrap
+        
+        
+        return ofp + '.tif'
         
         
  
@@ -851,215 +1009,50 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
              'debug':debug,
              })
         
-        wet_d = dict()
-        def upd_wet(da, k):
-            wet_d[k] = da.notnull().sum().item()
+ 
+    def upd_wet(da, k):
+        pass
+        #wet_d[k] = da.notnull().sum().item()
             
         
         
     log.info(f'passed all checks and downscale={downscale}\n    {meta_d}')
     
- 
+    
+    skwargs= dict(write_meta=write_meta, debug=debug, log=log, out_dir=out_dir,
+                  meta_d=meta_d)
     
     #===========================================================================
     # 01 resample------
     #===========================================================================
     phaseName='01_resamp'
-    log.debug(phaseName)
+    log.info(phaseName)
     
-    wse_fine_xr1 = resample_match_xr(wse_coarse_xr, dem_fine_xr, resampling=Resampling.bilinear)
-    wse_fine_xr1.attrs['layerName']='wse_fine'
-    
-    if write_meta:
-        upd_wet(wse_fine_xr1, phaseName)
-         
-        
-    if debug:
-        ofp = to_gtiff(wse_fine_xr1, phaseName)
-        assert_wse_xr(wse_fine_xr1, msg=f'{phaseName}\n{ofp}')
-        assert_equal_raster_metadata(wse_fine_xr1, dem_fine_xr, msg=f'{phaseName}\n{ofp}')
-        
-        
-        
-
+    wse_fine_xr1 = _01_resamp(dem_fine_xr, wse_coarse_xr, to_gtiff, upd_wet,phaseName=phaseName, **skwargs)
+    gc.collect()
     #===========================================================================
     # 02 wet partials--------
     #===========================================================================
-    phaseName='02_wp'
-    log.debug(phaseName)
     
-    wse_mar = wse_fine_xr1.to_masked_array()
- 
-    wse_mar2 = ma.MaskedArray(np.nan_to_num(wse_mar.data, nodata),
-              mask=np.logical_or(
-                  np.logical_or(dem_mar.mask, wse_mar.mask), #union of masks
-                  wse_mar<=dem_mar, #below ground water
-                  ))
-    
-    wse_fine_xr2 = dataarray_from_masked(wse_mar2, wse_fine_xr1)
-    
-    
-    #===========================================================================
-    # post
-    #===========================================================================
-    if write_meta:
-        upd_wet(wse_fine_xr2, phaseName)
-        
-    if debug:
-        if not wse_mar.mask.sum()<=wse_mar2.mask.sum():
-            raise AssertionError('expected wet-cell count to decrease during wet-partial treatment')        
- 
-        to_gtiff(wse_fine_xr2, phaseName)
-        
-        assert_xr_geoTiff(wse_fine_xr2)
-        
+    wse_fine_xr2 = _02_wetPartials(wse_fine_xr1, dem_fine_xr, to_gtiff, upd_wet,**skwargs)
+    del wse_fine_xr1
+    gc.collect()
  
         
     #===========================================================================
     # 03 dry partials--------
     #===========================================================================
-    phaseName='03_dp'
-    log.debug(f'{phaseName} w/ distance_fill={distance_fill}')
-    
-    
-    #needed by filter ops
-    f = getattr(scipy.ndimage, distance_fill_method)
-    distance_ar = f(wse_fine_xr2.isnull().data.astype(int),return_indices=False,return_distances=True
-                    )*pixel_size_m
-    
-    if debug:
-        distance_xr = dataarray_from_masked(ma.MaskedArray(distance_ar, mask=False), dem_fine_xr)
-        distance_xr.attrs['layerName'] = '0distance'
-        to_gtiff(distance_xr, phaseName)
+    wse_fine_xr3 = _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr, 
+                    downscale, distance_fill, distance_fill_method,                    
+                    decay_method_d, dp_coarse_pixel_max, m_to_rad, pixel_size_m,
+                     to_gtiff,upd_wet,**skwargs)
         
-    
-    #===========================================================================
-    #    03.1 growth threshold------
-    #===========================================================================
-    if not dp_coarse_pixel_max is None:
-        #True=within region of interest
-        distance_coarse_pixel_ar = distance_ar/pixel_size_m/downscale #convert back to pixels
-        grow_thresh_bar = distance_coarse_pixel_ar<dp_coarse_pixel_max
-        log.debug(f'w/ dp_coarse_pixel_max={dp_coarse_pixel_max} masked {np.invert(grow_thresh_bar).sum()/grow_thresh_bar.size:.4f} of pixels')
-        if not grow_thresh_bar.all():
-            #decided to allow this
-            log.warning(f'passed dp_coarse_pixel_max={dp_coarse_pixel_max}'+\
-            f' but max distance/downscale={np.max(distance_coarse_pixel_ar)}'+\
-            '\npass a smaller \'dp_coarse_pixel_max\' or pass None to remove pixel-based thresholding')
-    else:
-        log.debug('no pixel-based growth limitation')
-        grow_thresh_bar = np.full(distance_ar.shape, True)
-        
-        
- 
-    #===========================================================================
-    #    03.2 get imputed/filled WSE---------
-    #===========================================================================
-    """seems like there should be  away to apply grow_thresh_bar to speed up the distance calcs below""" 
-        
-    if distance_fill == 'neutral':
-        wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName),
-                                       method=distance_fill_method)
-        
-        if debug:
-            wse_filled_xr = dataarray_from_masked(ma.MaskedArray(wse_filled_ar), wse_fine_xr2)
-        
-    elif distance_fill == 'terrain_penalty':         
-        wse_filled_xr = _distance_fill_cost_terrain(wse_fine_xr2, dem_fine_xr,
-                                    wse_coarse_xr, log=log.getChild(phaseName),
-                                    out_dir=out_dir, m_to_rad=m_to_rad)
-        
-        wse_filled_ar = wse_filled_xr.data
- 
-    else:
-        raise KeyError(distance_fill)
-    
-
-    #===========================================================================
-    #    03.3 decay--------
-    #===========================================================================
-    #construct the combined decay values
-    if len(decay_method_d)>0:
-        decay_ar, d = _dp_decay(dem_fine_xr, wse_fine_xr2,
-                            decay_method_d=decay_method_d,
-                            m_to_rad=m_to_rad, pixel_size_m=pixel_size_m, 
-                            distance_ar=distance_ar,
-                            logger=log, debug=debug, out_dir=os.path.join(out_dir, 'decay'), 
-                            )
-        
-        meta_d.update(d)
-    else:
-        log.warning(f'no decay applied')
-        decay_ar = np.zeros(wse_filled_ar.shape)
-    
-    #apply the decay to the WSE
-    wse_filled_decayed_ar = wse_filled_ar - decay_ar
-    
-    if debug:
-        #check all the pre-decay pixels are hte same
-        assert np.all(
-            np.isclose(wse_filled_decayed_ar[wse_fine_xr2.notnull()],
-                       wse_fine_xr2.data[wse_fine_xr2.notnull()], 1e-5))
-    #===========================================================================
-    #    03.4 infill w/ valid wses ------------
-    #===========================================================================
-    log.debug(f'infilling wse with decayed growth')
-    
-    wse_fine_xr3 = wse_fine_xr2.fillna(
-            np.where(
-                np.logical_and(grow_thresh_bar, wse_filled_decayed_ar>dem_fine_xr.data), #within eligible growth and greater than the DEM
-                wse_filled_decayed_ar, np.nan)
-            ).where(dem_fine_xr.notnull(), np.nan) #re-apply mask
-    
- 
-    
-    #===========================================================================
-    # post
-    #===========================================================================
-    if debug:
-        if not wse_fine_xr3.isnull().sum()<=wse_fine_xr2.isnull().sum():
-            raise AssertionError(f'dry-cell failed to decrease during {phaseName}')
-        
-        #check all the non-decayed values have not changed
-        assert np.all(wse_fine_xr3.data[wse_fine_xr2.notnull()]==wse_fine_xr2.data[wse_fine_xr2.notnull()])
-        
-        #check we are still dry outside decay buffer
-        assert np.all(np.isnan(wse_fine_xr3.data[~grow_thresh_bar]))
-        
-        #check consistency w/ DEM
-        assert_wse_vs_dem_xr(wse_fine_xr3, dem_fine_xr,  msg=phaseName)
-        
-        #check we have some DP growth
-        
-        
-        #write the phase result
-        to_gtiff(wse_fine_xr3, phaseName)
-        
-        #write the wse grow/filled
-        wse_filled_xr.attrs['layerName']='2wse_fill'
-        to_gtiff(wse_filled_xr, phaseName)
-        
-        
-        
-        #write growth threshold
-        if not dp_coarse_pixel_max is None:
-            grow_xr = dataarray_from_masked(ma.MaskedArray(grow_thresh_bar.astype(float), mask=dem_fine_xr.isnull().data), dem_fine_xr)
-            grow_xr.attrs['layerName'] = '1grow_thresh'
-            to_gtiff(grow_xr, phaseName)
-            
-        
- 
-            
-        
-    if write_meta:
-        meta_d['distance_fill'] = distance_fill
-        upd_wet(wse_fine_xr3, phaseName)
-        
+    gc.collect()
     #===========================================================================
     # 04  isolated----------
     #===========================================================================
     phaseName='04_isol'
-    log.debug(f'{phaseName}  ')
+    log.info(f'{phaseName}')
     
     wse_mar = wse_fine_xr3.to_masked_array()
     inun_fine_ar = np.where(wse_mar.mask, 0.0, 1.0) #0:dry, 1:wet
@@ -1076,7 +1069,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     # #identify those labels we want to keep
     #===================================================================
     #wet partial inundation
-    inun_wp_bar = np.invert(wse_fine_xr2.to_masked_array().mask) #True=wet
+    inun_wp_bar = wse_fine_xr2.notnull().data #True=wet
  
     #those wet in 02WP
     connected_labels = np.unique(labels[inun_wp_bar])
@@ -1118,8 +1111,10 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     # 05 WRAP------
     #===========================================================================
     #append wet counts to meta
-    if write_meta:
-        meta_d.update({f'wetCnt_{k}':v for k,v in wet_d.items()})
+    #===========================================================================
+    # if write_meta:
+    #     meta_d.update({f'wetCnt_{k}':v for k,v in wet_d.items()})
+    #===========================================================================
     
     log.debug(f'finished w/ {meta_d}')
     return wse_fine_xr4, meta_d
