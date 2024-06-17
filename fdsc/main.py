@@ -17,7 +17,7 @@ CLI caller for running downscalers
 import os, argparse, logging
 import rioxarray
 
-from parameters import today_str
+from ..parameters import today_str
 from .coms import set_da_layerNames
 from .hp.logr import get_new_file_logger, get_log_stream
 from .hp.rio import geographic_to_projected

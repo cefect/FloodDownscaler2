@@ -16,7 +16,7 @@ import scipy.ndimage
 import skimage.graph
 from osgeo import gdal, gdal_array
 
-from parameters import today_str
+from ...parameters import today_str
 from ..hp.dirz import get_od
 from ..hp.logr import get_new_file_logger, get_log_stream
 from ..hp.xr import (
@@ -32,7 +32,7 @@ import geopandas as gpd
 from shapely.geometry import Point, LineString
 import pyproj
 
-import memory_profiler
+#import memory_profiler
 
 #===============================================================================
 # HELPERS------
