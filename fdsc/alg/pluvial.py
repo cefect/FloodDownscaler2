@@ -285,7 +285,7 @@ def _pluvial_pre(dem_fine_xr, wse_coarse_xr, filter_method, filter_depth, filter
         
     return wse_coarse_xr2, small_bar, wse_coarse_xr1,  blanket_coarse_xr, filter_depth
 
-@memory_profiler.profile 
+#@memory_profiler.profile 
 def downscale_pluvial_xr(
         dem_fine_xr, wse_coarse_xr,
         

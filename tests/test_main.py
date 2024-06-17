@@ -19,26 +19,28 @@ np.set_printoptions(linewidth=300)
 
 @pytest.mark.parametrize('phase', ['00_raw'])
 @pytest.mark.parametrize('caseName',[
-    'case_toy1',    
-    'case_ahr', #(16, 18) to (128, 144)
-    'case_jordan', #(197, 213) to (591, 639) EPSG4326    
+    #'case_toy1',    
+    #'case_ahr', #(16, 18) to (128, 144)
+    #'case_jordan', #(197, 213) to (591, 639) EPSG4326    
     #'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1. slow
     #pytest.param('case_ruth', marks=pytest.mark.xfail) #pluvial
  
+ 
     ])
 @pytest.mark.parametrize('method, params',[
-                         ('CostGrow', dict(distance_fill='neutral', dp_coarse_pixel_max=2)),
-                         ('CostGrow', dict(distance_fill='terrain_penalty', distance_fill_method='distance_transform_edt')),
+                         ('CostGrow', dict(distance_fill='neutral', dp_coarse_pixel_max=None)),
+                         #('CostGrow', dict(distance_fill='terrain_penalty', distance_fill_method='distance_transform_edt')),
                          ])
 @pytest.mark.parametrize('decay_method_d',[
-    {'linear':dict(decay_frac=0.005),'slope_linear':dict( decay_frac=0.005),'slope_power':dict(n=1.4, c=0.001)},
-    {},    
+    #{'linear':dict(decay_frac=0.005),'slope_linear':dict( decay_frac=0.005),'slope_power':dict(n=1.4, c=0.001)},
+    {'linear':dict(decay_frac=0.005),},    
     ])
 def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp, 
                               method, params,decay_method_d,
                               tmpdir, logger, caseName):
     
     print(f'caseName: {caseName}')
+    logger.info(f'{caseName}\n{method}\nparams={params}\ndecay_method_d={decay_method_d}')
     from ..fdsc.main import downscale_wse_raster as func
     
     """no.. not setup for this
@@ -62,14 +64,16 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
     'case_ruth',
     ])
 @pytest.mark.parametrize('method, params',[ 
-  ('CostGrow', dict(distance_fill='neutral',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=50)),
+    ('CostGrow', dict(distance_fill='terrain_penalty',distance_fill_method='distance_transform_cdt',dp_coarse_pixel_max=50)),
+  #('CostGrow', dict(distance_fill='neutral',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=50)),
   #('CostGrow', dict(distance_fill='terrain_penalty',distance_fill_method='distance_transform_edt',dp_coarse_pixel_max=10)),
   ])
  
 @pytest.mark.parametrize('pluvial_params',[
              #dict(reapply_small_groups=False, small_pixel_count=10, filter_depth=None, filter_depth_mode_buffer=0.2), #pretty aggressive
-              dict(reapply_small_groups=False, small_pixel_count=5, filter_depth=None, filter_depth_mode_buffer=0.1),  
-             #dict(reapply_small_groups=False, small_pixel_count=5, filter_depth=None)
+              #dict(reapply_small_groups=False, small_pixel_count=200, filter_depth=None, filter_depth_mode_buffer=0.3),   #heavy flitering for demonstration
+              dict(reapply_small_groups=False, small_pixel_count=5, filter_depth=None, filter_depth_mode_buffer=0.1),   #defaults
+ 
                              ])
 @pytest.mark.parametrize('decay_method_d', [
     #===========================================================================
@@ -112,6 +116,8 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
         #=======================================================================
         #{'linear':dict(decay_frac=0.01), 'slope_power':dict(n=1.4, c=0.005)}, #too aggressive
          {'linear':dict(decay_frac=0.005), 'slope_power':dict(n=1.4, c=0.001)}, #looks nice
+           #{'linear':dict(decay_frac=0.005)},  
+           #{}, #NOD ECAY
     ])
 @pytest.mark.parametrize('use_wsh', [
     True, 
@@ -128,7 +134,7 @@ def test_downscale_pluvial_wse_raster(dem_fine_fp, wse_coarse_fp,
                               tmpdir, logger, caseName):
     
  
-    logger.info(f'caseName: {caseName}\n{pprint.pformat(decay_method_d)}\n{tmpdir}')
+    logger.info(f'caseName: {caseName}\nparams={params}\n{pprint.pformat(decay_method_d)}\npluvial_params={pluvial_params}\n{tmpdir}')
  
     from ..fdsc.main import downscale_wse_raster as func
     
