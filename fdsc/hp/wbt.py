@@ -16,8 +16,7 @@ Created on May 26, 2024
 
 
 import logging, os
-import parameters
- 
+from ...parameters import log_level
  
 from ...whiteboxtools.whitebox_tools import WhiteboxTools
 wbt = WhiteboxTools()
@@ -30,7 +29,7 @@ wbt.set_compress_rasters(True)
 #===============================================================================
 # configure logging
 #===============================================================================
-if parameters.log_level>=logging.INFO:
+if log_level>=logging.INFO:
     wbt.set_verbose_mode(False)
 else:
     wbt.set_verbose_mode(True)
