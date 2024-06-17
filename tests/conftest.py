@@ -18,7 +18,7 @@ from ..fdsc.hp.xr import coarsen_dataarray, resample_match_xr, wse_to_wsh_xr, xr
 #===============================================================================
 # Parameters-------
 #===============================================================================
-write_to_test_data=True #control for writing test results to test_data_dir
+write_to_test_data=False #control for writing test results to test_data_dir
 if write_to_test_data:
     warnings.warn(f'write_to_test_data=True. test data will be over-written')
 
