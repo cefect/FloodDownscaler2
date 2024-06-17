@@ -16,7 +16,7 @@ Created on May 26, 2024
 
 
 import logging, os
-from ...parameters import log_level
+from ..parameters import log_level
  
 from ...whiteboxtools.whitebox_tools import WhiteboxTools
 wbt = WhiteboxTools()
