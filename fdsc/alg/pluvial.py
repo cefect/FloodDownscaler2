@@ -17,11 +17,11 @@ import scipy.ndimage
 import skimage.graph
 import scipy
 
-import memory_profiler
+#import memory_profiler
  
 #from osgeo import gdal
 
-from parameters import today_str
+#from ...parameters import today_str
 from ..hp.dirz import get_od
 from ..hp.logr import get_new_file_logger, get_log_stream
 from ..hp.xr import (

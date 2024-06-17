@@ -9,6 +9,7 @@ Created on May 25, 2024
 # IMPORTS------
 #===============================================================================
 import os, pathlib, pytest, logging, sys, tempfile, pickle, copy, warnings
+ 
 import rioxarray
 import numpy as np
 from ..fdsc.hp.dirz import recursive_file_search
@@ -20,6 +21,58 @@ from ..fdsc.hp.xr import coarsen_dataarray, resample_match_xr, wse_to_wsh_xr, xr
 write_to_test_data=True #control for writing test results to test_data_dir
 if write_to_test_data:
     warnings.warn(f'write_to_test_data=True. test data will be over-written')
+
+
+
+
+#===============================================================================
+# TEST_DATA------------
+#===============================================================================
+"""the test data library is kept separate (should make available for download)
+contains these cases:
+    case_01\
+    case_ahr\
+    case_jordan\
+    
+additional 'phase' parameters are used to allow for intermediate test data
+    
+"""
+#===============================================================================
+# load from directory
+#===============================================================================
+from definitions import test_data_dir_fdsc as test_data_dir
+ 
+
+print(f'loading test data from \n    {test_data_dir}')
+if os.path.exists(test_data_dir):
+    test_data_lib = recursive_file_search(test_data_dir, ['.tif', '.pkl', '.gpkg'])
+else:
+    raise IOError(f'no test data directory found at: {test_data_dir}')
+
+#===============================================================================
+# #add toy data
+#===============================================================================
+from .data_toy import test_data_lib as toy_test_data_lib
+from .data_toy import ar_to_geoTiff
+
+temp_dir = tempfile.mkdtemp()
+
+#create raster files from toy data
+"""would be nicer to do this on demand"""
+for caseName,v in toy_test_data_lib.copy().items():
+    toy_test_data_lib[caseName]['00_raw'] = dict() 
+    for k in ['dem_fine', 'wse_coarse', 'dem_coarse']:
+        ar = v[k+'_ar']
+        fp = os.path.join(temp_dir, 'conftest', caseName, k+'.tif')
+        toy_test_data_lib[caseName]['00_raw'][k] = ar_to_geoTiff(ar, fp)
+    
+    #handle toy data w/ some data files
+    if caseName in test_data_lib:
+        toy_test_data_lib[caseName].update(test_data_lib[caseName])
+ 
+#update the test lib
+test_data_lib.update(toy_test_data_lib)
+
 
 #===============================================================================
 # helpers---------
@@ -62,54 +115,6 @@ def _get_xr(caseName, phase, dataName):
     
         
     return da
-
-
-#===============================================================================
-# TEST_DATA------------
-#===============================================================================
-"""the test data library is kept separate (should make available for download)
-contains these cases:
-    case_01\
-    case_ahr\
-    case_jordan\
-    
-additional 'phase' parameters are used to allow for intermediate test data
-    
-"""
-#===============================================================================
-# load from directory
-#===============================================================================
-from definitions import test_data_dir
-
-if os.path.exists(test_data_dir):
-    test_data_lib = recursive_file_search(test_data_dir, ['.tif', '.pkl', '.gpkg'])
-else:
-    raise IOError(f'no test data directory found at: {test_data_dir}')
-
-#===============================================================================
-# #add toy data
-#===============================================================================
-from .data_toy import test_data_lib as toy_test_data_lib
-from .data_toy import ar_to_geoTiff
-
-temp_dir = tempfile.mkdtemp()
-
-#create raster files from toy data
-"""would be nicer to do this on demand"""
-for caseName,v in toy_test_data_lib.copy().items():
-    toy_test_data_lib[caseName]['00_raw'] = dict() 
-    for k in ['dem_fine', 'wse_coarse', 'dem_coarse']:
-        ar = v[k+'_ar']
-        fp = os.path.join(temp_dir, 'conftest', caseName, k+'.tif')
-        toy_test_data_lib[caseName]['00_raw'][k] = ar_to_geoTiff(ar, fp)
-    
-    #handle toy data w/ some data files
-    if caseName in test_data_lib:
-        toy_test_data_lib[caseName].update(test_data_lib[caseName])
- 
-#update the test lib
-test_data_lib.update(toy_test_data_lib)
-
 
 
 #===============================================================================
