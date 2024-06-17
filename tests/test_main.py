@@ -9,7 +9,7 @@ testing the main script
 import os, pathlib, pytest, logging, sys, pprint
 
 from .conftest import write_to_test_data
-from definitions import test_data_dir
+from definitions import test_data_dir_fdsc
 
 #print(f"Script path: {os.path.abspath(__file__)}\n Script directory: {os.path.dirname(os.path.abspath(__file__))}\n Current working directory: {os.getcwd()}")
 
