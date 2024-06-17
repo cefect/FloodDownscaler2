@@ -24,7 +24,7 @@ import numpy.ma as ma
 import rasterio as rio
 
 
-from hp.rio import (
+from .rio import (
     rlay_apply, write_array2
     )
 

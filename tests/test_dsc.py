@@ -22,13 +22,13 @@ xfail = pytest.mark.xfail
 #from fdsc.scripts.disag import disag
 #from fdsc.base import nicknames_d
 
-from fdsc.control import Dsc_Session as Session
-from fdsc.main import downscale
+from ..fdsc.control import Dsc_Session as Session
+from ..fdsc.main import downscale
  
 #from fdsc.bufferLoop import ar_buffer
-from hp.rasters import get_rlay_fp
+from ..hp.rasters import get_rlay_fp
 
-from tests.conftest import (
+from .conftest import (
      proj_lib,get_aoi_fp, 
     par_method_kwargs,temp_dir,
     par_algoMethodKwargs,
@@ -38,7 +38,7 @@ from tests.conftest import (
 #===============================================================================
 # test data------
 #===============================================================================
-from tests.data.toy import (
+from .data.toy import (
     aoi_box, bbox_default, proj_ar_d, crs_default
     )
 

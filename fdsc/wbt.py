@@ -5,9 +5,9 @@ Created on Dec. 5, 2022
 '''
 
 import os, logging, sys
-from whitebox_tools import WhiteboxTools
+from ..whiteboxtools.whitebox_tools import WhiteboxTools
 from definitions import wbt_dir
-from hp.oop import Basic
+from ..hp.oop import Basic
 import config
  
 

@@ -18,21 +18,21 @@ import geopandas as gpd
 from sklearn.neighbors import KDTree, BallTree
 from joblib import parallel_backend
 
-from hp.basic import now
-from hp.rio import (
+from ..hp.basic import now
+from ..hp.rio import (
      write_resample, assert_extent_equal, Resampling, assert_spatial_equal,
      write_mask_apply, get_profile, write_array2, write_mosaic
      )
 
-from hp.riom import (
+from ..hp.riom import (
     assert_mask_ar, load_mask_array, write_array_mask, write_extract_mask
     )
 
-from hp.gpd import (
+from ..hp.gpd import (
     drop_z, set_mask, view
     )
 
-from fdsc.base import DscBaseWorker, assert_partial_wet
+from .base import DscBaseWorker, assert_partial_wet
 
 methodName = 'Schumann14'
 
@@ -198,15 +198,15 @@ class Schuman14(DscBaseWorker):
         # load backend
         #=======================================================================
         if backend=='rio':
-            from hp.rio_to_points import raster_to_points_windowed
+            from ..hp.rio_to_points import raster_to_points_windowed
             
             func = lambda x:raster_to_points_windowed(x, drop_mask=True, max_workers=os.cpu_count())
         elif backend=='rio_simple':
-            from hp.rio_to_points import raster_to_points_simple
+            from ..hp.rio_to_points import raster_to_points_simple
             func = lambda x:raster_to_points_simple(x, drop_mask=True, max_workers=1)
         elif backend=='gr':
             assert_georasters()
-            from hp.gr import pixels_to_points as func
+            from ..hp.gr import pixels_to_points as func
         else:
             raise KeyError(backend)
             

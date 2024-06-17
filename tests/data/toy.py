@@ -21,11 +21,11 @@ more seamless with using real data in tests"""
 #===============================================================================
 # helpers
 #===============================================================================
-from hp.rasters import (
+from ...hp.rasters import (
     get_mar, get_ar_from_str, get_rlay_fp,crs_default, 
     )
 #from hp.hyd import get_wsh_ar
-from hp.np import apply_block_reduce2, get_support_ratio
+from ...hp.np import apply_block_reduce2, get_support_ratio
 
 
 

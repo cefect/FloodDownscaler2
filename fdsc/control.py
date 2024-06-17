@@ -15,28 +15,28 @@ from rasterio.enums import Resampling, Compression
 
 import shapely.geometry as sgeo
 
-from hp.basic import dstr, now
-from hp.oop import Session
-from hp.rio import (
+from ..hp.basic import dstr, now
+from ..hp.oop import Session
+from ..hp.rio import (
     assert_extent_equal,  RioSession,get_profile,
     write_array, assert_spatial_equal, write_clip,get_meta, get_bbox,
     write_resample, get_meta
     )
-from hp.pd import view
+from ..hp.pd import view
  
-from hp.hyd import (
+from ..hp.hyd import (
     HydTypes
     )
 
-from fdsc.wbt import WBT_worker
-from fdsc.base import (
+from .wbt import WBT_worker
+from .base import (
     assert_dem_ar, assert_wse_ar, rlay_extract, assert_dsc_res_lib
     )
 
-from fdsc.simple import BasicDSC
-from fdsc.schu14 import Schuman14
-from fdsc.costGrow import CostGrow
-from fdsc.bufferLoop import BufferGrowLoop
+from .simple import BasicDSC
+from .schu14 import Schuman14
+from .costGrow import CostGrow
+from .bufferLoop import BufferGrowLoop
 
 
 

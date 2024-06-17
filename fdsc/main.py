@@ -6,7 +6,7 @@ Created on Oct. 24, 2023
 CLI caller for running downscalers
 '''
 import os, argparse
-from fdsc.control import Dsc_Session
+from .control import Dsc_Session
 
 def downscale(
     dem_fp,

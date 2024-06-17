@@ -18,15 +18,15 @@ from pyproj.crs import CRS
 
 #project
 from parameters import src_dir
-from tests._params import epsg, bounds
-from hp._params import temp_dir
+from ._params import epsg, bounds
+from ..hp._params import temp_dir
 #from fdsc.base import nicknames_d
 
 #helpers
 #===============================================================================
 # from hp.tests.tools.rasters import get_rlay_fp
 # from hp.tests.conftest import init_kwargs
-from hp.logr import get_new_console_logger, logging
+from ..hp.logr import get_new_console_logger, logging
 # from hp.rio import write_array, write_array2
 # from hp.riom import assert_masked_ar
 #===============================================================================

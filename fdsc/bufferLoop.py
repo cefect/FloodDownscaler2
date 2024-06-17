@@ -12,16 +12,16 @@ from rasterio import shutil as rshutil
 
 
 
-from hp.basic import now
-from hp.rio import (
+from ..hp.basic import now
+from ..hp.rio import (
     assert_rlay_simple, 
     write_array, 
 
     )
 
-from fdsc.simple import WetPartials
+from .simple import WetPartials
 
-from fdsc.base import (
+from .base import (
     assert_dem_ar, assert_wse_ar, rlay_extract, assert_partial_wet
     )
 
