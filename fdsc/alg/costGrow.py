@@ -751,7 +751,7 @@ def _02_wetPartials(wse_fine_xr1, dem_fine_xr,
     return wse_fine_xr2
 
 
-@memory_profiler.profile 
+#@memory_profiler.profile 
 def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr, 
                     downscale, distance_fill, distance_fill_method,                    
                     decay_method_d, dp_coarse_pixel_max, m_to_rad, pixel_size_m,
@@ -855,7 +855,7 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
         upd_wet(wse_fine_xr3, phaseName)
     return wse_fine_xr3
 
-@memory_profiler.profile 
+#@memory_profiler.profile 
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 distance_fill='neutral',
