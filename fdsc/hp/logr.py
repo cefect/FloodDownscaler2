@@ -21,6 +21,7 @@ def get_new_file_logger(
         level=logging.DEBUG,
         fp=None, #file location to log to
         logger=None,
+        mode='w',
         ):
     
     #===========================================================================
@@ -37,7 +38,7 @@ def get_new_file_logger(
     assert fp.endswith('.log')
     
     formatter = logging.Formatter('%(levelname)s.%(name)s.%(asctime)s:  %(message)s')        
-    handler = logging.FileHandler(fp, mode='w') #Create a file handler at the passed filename 
+    handler = logging.FileHandler(fp, mode=mode) #Create a file handler at the passed filename 
     handler.setFormatter(formatter) #attach teh formater object
     handler.setLevel(level) #set the level of the handler
     
