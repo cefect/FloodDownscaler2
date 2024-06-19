@@ -33,7 +33,7 @@ if log_level>=logging.INFO:
     wbt.set_verbose_mode(False)
 else:
     wbt.set_verbose_mode(True)
-    print(f'WhiteBoxTools initated w/ \n{wbt.version()}')
+    #print(f'WhiteBoxTools initated w/ \n{wbt.version()}')
 
 """not working for some reason... set excplicitly in the function call
 logger = logging.getLogger('wbt')
