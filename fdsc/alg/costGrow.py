@@ -297,6 +297,9 @@ def _distance_fill(mar,
     
     Params
     ------------
+    mar: numpy.masked.array
+        dataset where masked values will be imputed
+        
     method: str
         scipy.ndimage method with which to apply the distance calc
             distance_transform_cdt: chamfer transform
