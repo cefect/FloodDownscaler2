@@ -108,6 +108,39 @@ def _to_gtiff(da, phaseName, out_dir=None, meta_d=dict(), layerName=None, log=No
    
 
 
+
+def filter_small_groups(wet_bar, small_pixel_count, log):
+    """
+    
+    params
+    ----------
+    dry_bar: np.array boolean
+        True=Dry, False=Wet
+    
+    returns
+    ----------
+    cells part of small groups
+    """
+    inun_fine_ar = np.where(wet_bar, 1.0, 0.0) #0:dry, 1:wet
+    # produce integer labels for each connected component
+    #0-valued pixels are considered as background pixels
+    labels, nlabels = skimage.measure.label(
+        inun_fine_ar, 
+        connectivity=1, 
+        return_num=True)
+    log.debug(f'identified {nlabels} groups')
+    #get the size of each region
+    props = skimage.measure.regionprops_table(labels, properties=('label', 'area'))
+    ser = pd.Series(dict(zip(props['label'], props['area']))).astype(int).sort_values().rename('pixel_cnt')
+    #identify regions below the threshold
+    small_labels_ar = ser[ser <= small_pixel_count].index.values
+    log.debug(f'found {len(small_labels_ar)}/{nlabels} regions smaller than {small_pixel_count} pixels')
+    #mask these out
+    small_bar = np.isin(labels, small_labels_ar)
+    assert small_bar.any()
+    log.debug(f'filtering {small_bar.sum()} pixels falling in small regions')
+    return small_bar
+
 def _pluvial_pre(dem_fine_xr, wse_coarse_xr, filter_method, filter_depth, filter_depth_mode_buffer, 
                  small_pixel_count, dem_coarse_xr, dem_coarse_resampling, wsh_coarse_xr, 
                  
@@ -250,24 +283,8 @@ def _pluvial_pre(dem_fine_xr, wse_coarse_xr, filter_method, filter_depth, filter
     phaseName = '00_03_smalls'
     if small_pixel_count > 0:
         wse_mar = wse_coarse_xr1.to_masked_array()
-        inun_fine_ar = np.where(wse_mar.mask, 0.0, 1.0) #0:dry, 1:wet
-        # produce integer labels for each connected component
-        #0-valued pixels are considered as background pixels
-        labels, nlabels = skimage.measure.label(
-            inun_fine_ar, 
-            connectivity=1, 
-            return_num=True)
-        log.debug(f'identified {nlabels} groups')
-        #get the size of each region
-        props = skimage.measure.regionprops_table(labels, properties=('label', 'area'))
-        ser = pd.Series(dict(zip(props['label'], props['area']))).astype(int).sort_values().rename('pixel_cnt')
-        #identify regions below the threshold
-        small_labels_ar = ser[ser <= small_pixel_count].index.values
-        log.debug(f'found {len(small_labels_ar)}/{nlabels} regions smaller than {small_pixel_count} pixels')
-        #mask these out
-        small_bar = np.isin(labels, small_labels_ar)
-        assert small_bar.any()
-        log.debug(f'filtering {small_bar.sum()} pixels falling in small regions')
+        raise IOError('check this')
+        small_bar = filter_small_groups(~wse_mar.mask, small_pixel_count, log)
         wse_coarse_xr2 = wse_coarse_xr1.where(~small_bar, np.nan)
     else:
         wse_coarse_xr2 = wse_coarse_xr1
