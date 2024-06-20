@@ -44,7 +44,7 @@ def get_new_file_logger(
     
     logger.addHandler(handler) #attach teh handler to the logger
     
-    logger.info('built new file logger  here \n    %s'%(fp))
+    logger.debug('built new file logger  here \n    %s'%(fp))
     
     return logger
     
@@ -78,7 +78,7 @@ def get_log_stream(
     
     logger.addHandler(handler) #attach teh handler to the logger
     
-    logger.info('built new console logger')
+    logger.debug('built new console logger')
     
     return logger
     
