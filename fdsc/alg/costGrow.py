@@ -859,6 +859,51 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
     return wse_fine_xr3
 
 #@memory_profiler.profile 
+
+def filter_isolated(source_bar, anchor_bar, log, debug=True):
+    """remove isolated pixels from a source image using a target image"""
+    
+    #precheck
+    if debug:
+        assert isinstance(source_bar, np.ndarray)
+        assert 'bool' in source_bar.dtype.name
+        assert not source_bar.all()
+        assert source_bar.sum()>anchor_bar.sum()
+        assert source_bar[anchor_bar].any(), 'no overlap between source and anchor'
+    
+    log.debug(f'filter_isolated on {source_bar.shape}')
+    # produce integer labels for each connected component
+    #0-valued pixels are considered as background pixels
+    labels, nlabels = skimage.measure.label(
+        source_bar.astype(int), 
+        connectivity=1, 
+        return_num=True)
+    log.debug(f'identified {nlabels} regions')
+    #===================================================================
+    # #identify those labels we want to keep
+    #===================================================================
+ 
+    #those wet in 02WP
+    connected_labels = np.unique(labels[anchor_bar])
+    log.debug(f'{len(connected_labels)}/{nlabels} intersect w/ anchors')
+    #apply mask
+    connected_bar = np.isin(labels, connected_labels)
+ 
+    #===========================================================================
+    # meta
+    #===========================================================================
+    meta_d = dict()
+    meta_d['isolated_region_raw_cnt'] = nlabels
+    meta_d['isolated_region_sel_cnt'] = len(connected_labels)
+    meta_d['isolated_region_pre_cnt'] = source_bar.sum()
+    meta_d['isolated_region_post_cnt'] = connected_bar.sum()
+    
+    log.debug(f'finished w/\n    {meta_d}')
+    
+    assert source_bar[connected_bar].all()
+    
+    return connected_bar, meta_d
+
 def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                           
                 distance_fill='neutral',
@@ -1057,31 +1102,9 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     phaseName='04_isol'
     log.info(f'{phaseName}')
     
-    wse_mar = wse_fine_xr3.to_masked_array()
-    inun_fine_ar = np.where(wse_mar.mask, 0.0, 1.0) #0:dry, 1:wet
-    
-    # produce integer labels for each connected component
-    #0-valued pixels are considered as background pixels
-    labels, nlabels = skimage.measure.label(
-        inun_fine_ar, 
-        connectivity=1, 
-        return_num=True)
-    
-    log.debug(f'identified {nlabels} regions')
-    #===================================================================
-    # #identify those labels we want to keep
-    #===================================================================
-    #wet partial inundation
-    inun_wp_bar = wse_fine_xr2.notnull().data #True=wet
- 
-    #those wet in 02WP
-    connected_labels = np.unique(labels[inun_wp_bar])
-    log.debug(f'{len(connected_labels)}/{nlabels} intersect w/ 02wp')
-    
-    #apply mask
-    iso_bar = np.isin(labels, connected_labels)
-
-    wse_fine_xr4 = wse_fine_xr3.where(iso_bar)
+    iso_bar, d = filter_isolated(wse_fine_xr3.notnull().data, wse_fine_xr2.notnull().data, log)
+    wse_fine_xr4 = wse_fine_xr3.where(iso_bar, np.nan)
+    meta_d.update(d)
     
     #===========================================================================
     # post
@@ -1106,8 +1129,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         
         
     if write_meta:
-        meta_d['isolated_region_raw_cnt'] = nlabels
-        meta_d['isolated_region_sel_cnt'] = len(connected_labels)
+
         upd_wet(wse_fine_xr4, phaseName)
         
     #===========================================================================

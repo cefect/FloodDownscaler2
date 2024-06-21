@@ -16,11 +16,11 @@ from definitions import test_data_dir_fdsc
 import numpy as np
 np.set_printoptions(linewidth=300)
 
-
+@pytest.mark.dev
 @pytest.mark.parametrize('phase', ['00_raw'])
 @pytest.mark.parametrize('caseName',[
     #'case_toy1',    
-    #'case_ahr', #(16, 18) to (128, 144)
+    'case_ahr', #(16, 18) to (128, 144)
     #'case_jordan', #(197, 213) to (591, 639) EPSG4326    
     #'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1. slow
     #pytest.param('case_ruth', marks=pytest.mark.xfail) #pluvial
@@ -58,7 +58,7 @@ def test_downscale_wse_raster(dem_fine_fp, wse_coarse_fp,
          **params) 
     
     
-@pytest.mark.dev
+
 @pytest.mark.parametrize('phase', ['00_raw'])
 @pytest.mark.parametrize('caseName',[ 
     'case_ruth',
