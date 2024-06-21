@@ -900,7 +900,9 @@ def filter_isolated(source_bar, anchor_bar, log, debug=True):
     
     log.debug(f'finished w/\n    {meta_d}')
     
-    assert source_bar[connected_bar].all()
+    if debug:
+        assert source_bar[connected_bar].all()
+        assert connected_bar.any()
     
     return connected_bar, meta_d
 
