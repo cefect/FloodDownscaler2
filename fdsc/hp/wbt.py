@@ -4,7 +4,7 @@ Created on May 26, 2024
 @author: cef
 '''
 import logging, os, multiprocessing
-
+current_wdir = os.getcwd() #WBT moves htis
 #===============================================================================
 # build info
 #===============================================================================
@@ -33,7 +33,7 @@ import os, subprocess
 
 from ..parameters import log_level
 
-
+"""WARNING... something here changes the directory?"""
  
 from ...whiteboxtools.whitebox_tools import WhiteboxTools
 wbt = WhiteboxTools()
@@ -51,6 +51,8 @@ if log_level>=logging.INFO:
 else:
     wbt.set_verbose_mode(True)
     #print(f'WhiteBoxTools initated w/ \n{wbt.version()}')
+    
+os.chdir(current_wdir)
 
 """not working for some reason... set excplicitly in the function call
 logger = logging.getLogger('wbt')
@@ -82,3 +84,5 @@ def wbt_subprocess(command, log=None, debug=False):
 class WhiteBoxToolsCallFail(Exception):
     """Exception raised for errors in the execution of WhiteBoxTools."""
     pass
+
+
