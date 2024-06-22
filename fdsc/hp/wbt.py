@@ -23,9 +23,9 @@ wbt = WhiteboxTools()
 
 from definitions import wbt_dir, wrk_dir
 wbt.set_whitebox_dir(wbt_dir)
-wbt.set_working_dir(wrk_dir)
- 
+wbt.set_working_dir(wrk_dir) 
 wbt.set_compress_rasters(True)
+wbt.set_max_procs(1) #needed by HPC?
 #===============================================================================
 # configure logging
 #===============================================================================
