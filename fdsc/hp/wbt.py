@@ -17,14 +17,16 @@ import logging, os, multiprocessing
 # print('PYTHONPATH')
 # if 'PYTHONPATH' in os.environ: print('\n'.join(os.environ['PYTHONPATH'].split(';')))
 #=============================================================================== 
-
-# Method 1: Using the os module
-num_processors_os = os.cpu_count()
-print(f"Number of available processors (os module): {num_processors_os}")
-
-# Method 2: Using the multiprocessing module
-num_processors_mp = multiprocessing.cpu_count()
-print(f"Number of available processors (multiprocessing module): {num_processors_mp}")
+#===============================================================================
+# 
+# # Method 1: Using the os module
+# num_processors_os = os.cpu_count()
+# print(f"Number of available processors (os module): {num_processors_os}")
+# 
+# # Method 2: Using the multiprocessing module
+# num_processors_mp = multiprocessing.cpu_count()
+# print(f"Number of available processors (multiprocessing module): {num_processors_mp}")
+#===============================================================================
 
 
 
