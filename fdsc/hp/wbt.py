@@ -3,8 +3,8 @@ Created on May 26, 2024
 
 @author: cef
 '''
-import logging, os, multiprocessing
-current_wdir = os.getcwd() #WBT moves htis
+import logging, os, multiprocessing, subprocess
+
 #===============================================================================
 # build info
 #===============================================================================
@@ -28,8 +28,7 @@ current_wdir = os.getcwd() #WBT moves htis
 # print(f"Number of available processors (multiprocessing module): {num_processors_mp}")
 #===============================================================================
 
-
-import os, subprocess
+current_wdir = os.getcwd() #WBT moves htis
 
 from ..parameters import log_level
 
