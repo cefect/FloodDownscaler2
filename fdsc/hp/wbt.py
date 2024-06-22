@@ -29,7 +29,7 @@ import logging, os, multiprocessing
 #===============================================================================
 
 
-
+import os, subprocess
 
 from ..parameters import log_level
 
@@ -59,7 +59,25 @@ logger = logging.getLogger('wbt')
 wbt.set_default_callback(lambda value: logger.debug(value) if not "%" in value else None)
 
 """
- 
+def wbt_subprocess(command, log=None, debug=False):
+    """subprocess helper
+    some systems dont play well with python implementation
+    """
+    
+    if debug:
+        command.append('-v')
+    # Run the command using subprocess.Popen
+    log.debug(command)
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    #log results
+    stdout, stderr = process.communicate()
+    log.debug(stdout.decode())
+    if stderr:
+        log.error(stderr.decode())
+    # Check for errors
+    if process.returncode != 0:
+        raise Exception(f'fill_depressions failed: {stderr.decode()}')
+    
  
 class WhiteBoxToolsCallFail(Exception):
     """Exception raised for errors in the execution of WhiteBoxTools."""
