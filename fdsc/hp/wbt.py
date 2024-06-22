@@ -3,7 +3,11 @@ Created on May 26, 2024
 
 @author: cef
 '''
+import logging, os, multiprocessing
 
+#===============================================================================
+# build info
+#===============================================================================
 #===============================================================================
 # import sys, os
 # print(sys.executable)
@@ -12,11 +16,22 @@ Created on May 26, 2024
 # print('sys.path\n' + '\n'.join(sys.path))
 # print('PYTHONPATH')
 # if 'PYTHONPATH' in os.environ: print('\n'.join(os.environ['PYTHONPATH'].split(';')))
-#===============================================================================
+#=============================================================================== 
+
+# Method 1: Using the os module
+num_processors_os = os.cpu_count()
+print(f"Number of available processors (os module): {num_processors_os}")
+
+# Method 2: Using the multiprocessing module
+num_processors_mp = multiprocessing.cpu_count()
+print(f"Number of available processors (multiprocessing module): {num_processors_mp}")
 
 
-import logging, os
+
+
 from ..parameters import log_level
+
+
  
 from ...whiteboxtools.whitebox_tools import WhiteboxTools
 wbt = WhiteboxTools()
