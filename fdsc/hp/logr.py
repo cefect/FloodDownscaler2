@@ -52,9 +52,7 @@ def get_new_file_logger(
 def get_log_stream(
         logger_name='log',
         level=logging.DEBUG,
- 
-        logger=None,
-        ):
+        logger=None):
     
     #===========================================================================
     # configure the logger
@@ -65,21 +63,26 @@ def get_log_stream(
     logger.setLevel(level)
     
     #===========================================================================
-    # configure the handler
+    # check if the logger already has a StreamHandler
     #===========================================================================
- 
+    has_stream_handler = any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
     
-    formatter = logging.Formatter('%(levelname)s.%(name)s:  %(message)s')        
-    handler = logging.StreamHandler(
-        stream=sys.stdout, #send to stdout (supports colors)
+    if not has_stream_handler:
+        #===========================================================================
+        # configure the handler
+        #===========================================================================
+        formatter = logging.Formatter('%(levelname)s.%(name)s:  %(message)s')        
+        handler = logging.StreamHandler(
+            stream=sys.stdout,  # send to stdout (supports colors)
         )  
-    handler.setFormatter(formatter) #attach teh formater object
-    handler.setLevel(level) #set the level of the handler
-    
-    logger.addHandler(handler) #attach teh handler to the logger
-    
-    logger.debug('built new console logger')
-    
+        handler.setFormatter(formatter)  # attach the formatter object
+        handler.setLevel(level)  # set the level of the handler
+        
+        logger.addHandler(handler)  # attach the handler to the logger
+        logger.debug('Built new console logger')
+    else:
+        logger.debug('Console logger already exists')
+
     return logger
     
     
