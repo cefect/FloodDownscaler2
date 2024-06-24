@@ -81,7 +81,8 @@ def get_log_stream(
         logger.addHandler(handler)  # attach the handler to the logger
         logger.debug('Built new console logger')
     else:
-        logger.debug('Console logger already exists')
+        pass
+        #logger.debug('Console logger already exists')
 
     return logger
     
