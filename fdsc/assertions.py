@@ -269,6 +269,15 @@ def assert_xr_geoTiff(da, nodata_value=-9999, x_dim="x", y_dim="y",
         
     if da.rio.crs is None:
         raise AssertionError(f'CRS must be assigned\n    {msg}')
+    
+    #check single band
+    """I guess we allow this sometimes
+    if not len(da.shape)==2:
+        raise AssertionError(f'expects a 2D raster\n'+msg)"""
+    if len(da.shape)==3:
+        if not da.shape[0]==1:
+            raise AssertionError(f'only single band\n'+msg)
+    
 
     # Check for presence of x and y dimensions
     if x_dim not in da.dims or y_dim not in da.dims:
