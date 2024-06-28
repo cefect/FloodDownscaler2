@@ -31,17 +31,35 @@ def shape_ratio(da1, da2):
     return ratios
 
 
+def find_nearest_divisor(X, Y):
+    # Find all factors of X
+    factors = [i for i in range(1, X + 1) if X % i == 0]
+    
+    # Find the factor closest to Y
+    closest_factor = min(factors, key=lambda k: abs(k - Y))
+    
+    return closest_factor
+
+ 
+
+
 # Function to find the closest factors for coarse_shape dimensions
 def round_to_closest_shape(fine_dims, coarse_dims):
     """not sure how robust this is"""
     new_dims = []
-    for fine_dim, coarse_dim in zip(fine_dims, coarse_dims):
-        factor = round(fine_dim / coarse_dim, 0)
-        new_dim = fine_dim / factor
-        new_dims.append(int(new_dim))
+    for fine_dim, coarse_dim in zip(fine_dims, coarse_dims): 
+        new_dims.append(find_nearest_divisor(fine_dim, coarse_dim))
+    
+    #check
+    for fine_dim, coarse_dim in zip(fine_dims, new_dims): 
+        ratio = fine_dim / coarse_dim
+        if not np.isclose(ratio, int(ratio)):
+            raise ValueError(f'Result is not an integer\n    {ratio}\n    new_dims={new_dims}')
+        
+        
     return tuple(new_dims)
 
-4000/210
+ 
 
 
 def set_da_layerNames(da_layerName_d):
