@@ -4,7 +4,7 @@ Created on May 25, 2024
 @author: cef
 '''
 
-import warnings
+import warnings, math
 from .assertions import *
 
 def shape_ratio(da1, da2):
@@ -29,6 +29,19 @@ def shape_ratio(da1, da2):
     # Calculate ratios and return as a tuple
     ratios = tuple(da1.sizes[dim] / da2.sizes[dim] for dim in da1.dims)
     return ratios
+
+
+# Function to find the closest factors for coarse_shape dimensions
+def round_to_closest_shape(fine_dims, coarse_dims):
+    """not sure how robust this is"""
+    new_dims = []
+    for fine_dim, coarse_dim in zip(fine_dims, coarse_dims):
+        factor = round(fine_dim / coarse_dim, 0)
+        new_dim = fine_dim / factor
+        new_dims.append(int(new_dim))
+    return tuple(new_dims)
+
+4000/210
 
 
 def set_da_layerNames(da_layerName_d):

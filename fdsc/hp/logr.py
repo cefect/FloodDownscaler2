@@ -37,7 +37,8 @@ def get_new_file_logger(
     #===========================================================================
     assert fp.endswith('.log')
     
-    formatter = logging.Formatter('%(levelname)s.%(name)s.%(asctime)s:  %(message)s')        
+    formatter = logging.Formatter('%(levelname)s.%(asctime)s.%(name)s:  %(message)s',
+                                  datefmt='%H:%M:%S')        
     handler = logging.FileHandler(fp, mode=mode) #Create a file handler at the passed filename 
     handler.setFormatter(formatter) #attach teh formater object
     handler.setLevel(level) #set the level of the handler

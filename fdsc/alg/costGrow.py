@@ -575,7 +575,7 @@ def _dp_decay(dem_fine_xr, wse_fine_xr,
     log = logger.getChild('decay')
     assert len(decay_method_d)>0
     
-    log.info(f'constructing decay from {len(decay_method_d)}')
+    log.debug(f'\n\nconstructing decay from {len(decay_method_d)}\n\n')
     meta_d = dict()
     layers_d=dict()
     #===========================================================================
@@ -654,10 +654,10 @@ def _dp_decay(dem_fine_xr, wse_fine_xr,
         if decay_method == 'linear':
             decay_frac = params['decay_frac']
             #multiply by distance to nearest wet
-            log.debug(f'applying distanc-weighted decay_frac={decay_frac:.3f}')
+            log.debug(f'applying distanc-weighted decay_frac={decay_frac:.6f}')
             decay_ar = np.where(decay_zone_bar, distance_ar * decay_frac, 0.0)
             
-            sfx = '_%.4f'%decay_frac
+            sfx = '_%.6f'%decay_frac
         #=======================================================================
         # slope-weighted linear
         #=======================================================================
@@ -667,7 +667,7 @@ def _dp_decay(dem_fine_xr, wse_fine_xr,
             
             costAccum_slope_xr = get_costAccum_slope_xr(phaseName=phaseName)
             #multiply  by decay fraction
-            log.debug(f'computing decay from cost-accumulated slopes * {decay_frac:.3f}')
+            log.debug(f'computing decay from cost-accumulated slopes * {decay_frac:.6f}')
             decay_ar = costAccum_slope_xr.data * decay_frac
             
  
@@ -762,7 +762,8 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
                     write_meta=False, debug=__debug__, log=None, meta_d=dict(), out_dir=None):
     
     phaseName = '03_dp'
-    log.info(f'{phaseName} w/ distance_fill={distance_fill}')
+    log.info(f'\n\n{phaseName} w/ distance_fill={distance_fill}\n' +\
+             '-----------------------------------------------------\n\n')
     #needed by filter ops
     f = getattr(scipy.ndimage, distance_fill_method)
     distance_ar = f(wse_fine_xr2.isnull().data.astype(int), return_indices=False, 
@@ -776,14 +777,21 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
     #    03.1 growth threshold------
     #===========================================================================
     if not dp_coarse_pixel_max is None:
+        log.debug(f'\n\napplying 03.1 growth threshold\n\n')
         #True=within region of interest
         distance_coarse_pixel_ar = distance_ar / pixel_size_m / downscale #convert back to pixels
         grow_thresh_bar = distance_coarse_pixel_ar < dp_coarse_pixel_max
-        log.debug(f'w/ dp_coarse_pixel_max={dp_coarse_pixel_max} masked {np.invert(grow_thresh_bar).sum()/grow_thresh_bar.size:.4f} of pixels')
-        if not grow_thresh_bar.all():
+        
+        log.debug(f'w/ dp_coarse_pixel_max={dp_coarse_pixel_max} masked'+\
+                  f'{np.invert(grow_thresh_bar).sum()/grow_thresh_bar.size:.4f} of pixels') #these are not necessarliywet
+        
+        if not grow_thresh_bar.any():
             #decided to allow this
             log.warning(
-                f'passed dp_coarse_pixel_max={dp_coarse_pixel_max}' + f' but max distance/downscale={np.max(distance_coarse_pixel_ar)}' + '\npass a smaller \'dp_coarse_pixel_max\' or pass None to remove pixel-based thresholding')
+                f'passed dp_coarse_pixel_max={dp_coarse_pixel_max}' +\
+                 f' but max distance/downscale={np.max(distance_coarse_pixel_ar)}' +\
+                  '\npass a smaller \'dp_coarse_pixel_max\' or pass None to remove pixel-based thresholding')
+            
     else:
         log.debug('no pixel-based growth limitation')
         grow_thresh_bar = np.full(distance_ar.shape, True)
@@ -808,15 +816,18 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
     #===========================================================================
     #construct the combined decay values
     if len(decay_method_d) > 0:
+        
         decay_ar, d = _dp_decay(dem_fine_xr, wse_fine_xr2, 
             decay_method_d=decay_method_d, 
             m_to_rad=m_to_rad, pixel_size_m=pixel_size_m, 
             distance_ar=distance_ar, 
             logger=log, debug=debug, out_dir=os.path.join(out_dir, 'decay'))
+        
         meta_d.update(d)
     else:
         log.warning(f'no decay applied')
         decay_ar = np.zeros(wse_filled_ar.shape)
+        
     #apply the decay to the WSE
     wse_filled_decayed_ar = wse_filled_ar - decay_ar
     if debug:
@@ -828,8 +839,13 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
     #    03.4 infill w/ valid wses ------------
     #===========================================================================
     log.debug(f'infilling wse with decayed growth')
-    wse_fine_xr3 = wse_fine_xr2.fillna(np.where(np.logical_and(grow_thresh_bar, wse_filled_decayed_ar > dem_fine_xr.data), #within eligible growth and greater than the DEM
-            wse_filled_decayed_ar, np.nan)).where(dem_fine_xr.notnull(), np.nan) #re-apply mask
+    wse_fine_xr3 = wse_fine_xr2.fillna(
+        np.where(
+            np.logical_and( #within eligible growth and greater than the DEM
+                    grow_thresh_bar, 
+                    wse_filled_decayed_ar > dem_fine_xr.data), 
+            wse_filled_decayed_ar, np.nan)
+        ).where(dem_fine_xr.notnull(), np.nan) #re-apply mask
     #===========================================================================
     # post
     #===========================================================================
@@ -916,6 +932,8 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
                     },
  
                 dp_coarse_pixel_max=10,
+                
+                as_wsh=False, coarse_shape=None,
                           
                  logger=None,
                  write_meta=True, meta_d=dict(), wet_d=dict(),
@@ -944,7 +962,12 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     dp_coarse_pixel_max: int, default 10.0
         maximum number of coarse pixels to allow dry-partial growth
         pass None to skip applying this threshold (unbounded growth)
-         
+        
+    to_wsh: bool
+        return WSH (instead of WSE)
+        
+    coarse_shape: tuple
+        optional in case the wse_coarse_xr has already been reprojected
         
             
     out_dir: str, optional
@@ -1037,7 +1060,18 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         assert_equal_extents_xr(dem_fine_xr, wse_coarse_xr, msg='\nraw inputs')    
     
     #get rescaling value
-    shape_rat_t = shape_ratio(dem_fine_xr, wse_coarse_xr) 
+    if coarse_shape is None:
+        coarse_shape = wse_coarse_xr.shape
+        
+    assert isinstance(coarse_shape, tuple)
+    assert len(coarse_shape)==2
+    
+    shape_rat_t = tuple([dem_fine_xr.shape[i]/e for i,e in enumerate(coarse_shape)])
+ 
+    
+    
+    
+    #shape_rat_t = shape_ratio(dem_fine_xr, wse_coarse_xr) 
     assert_integer_like_and_nearly_identical(np.array(shape_rat_t))
     
     downscale=int(shape_rat_t[0])
@@ -1077,7 +1111,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     #===========================================================================
     phaseName='01_resamp'
     log.info(phaseName)
-    
+    """could probably skip this if coarse_shape is passed"""
     wse_fine_xr1 = _01_resamp(dem_fine_xr, wse_coarse_xr, to_gtiff, upd_wet,phaseName=phaseName, **skwargs)
     gc.collect()
     #===========================================================================
@@ -1131,20 +1165,26 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
         
         
     if write_meta:
-
         upd_wet(wse_fine_xr4, phaseName)
         
     #===========================================================================
-    # 05 WRAP------
+    # 07 WSH-----------
     #===========================================================================
-    #append wet counts to meta
+    if as_wsh:
+        log.debug(f'converting to WSH')
+        result = wse_to_wsh_xr(dem_fine_xr, wse_fine_xr4, log=log, debug=debug, 
+                               allow_low_wse=False)
+    else:
+        result = wse_fine_xr4
+        
+        
     #===========================================================================
-    # if write_meta:
-    #     meta_d.update({f'wetCnt_{k}':v for k,v in wet_d.items()})
+    # 06 WRAP------
     #===========================================================================
+ 
     
     log.debug(f'finished w/ {meta_d}')
-    return wse_fine_xr4, meta_d
+    return result, meta_d
  
  
     
