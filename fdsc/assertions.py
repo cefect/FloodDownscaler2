@@ -97,7 +97,7 @@ def assert_masked_ar(ar, msg=''):
         raise AssertionError(msg+f'\n    got {np.isnan(ar.data).sum()}/{ar.size} nulls outside of mask')
     
     if np.all(ar.mask):
-        raise AssertionError(msg+f'\n    passed array is fully masked')
+        raise AssertionError(f'passed array is fully masked\n    '+msg)
          
   
     
@@ -169,7 +169,7 @@ def assert_wse_ar(ar, msg='', assert_partial=True):
         if assert_partial:
             assert_partial_wet(ar.mask)
     except Exception as e:
-        raise TypeError(msg+f'\npassed array does not conform to WSE expectations\n{e}')
+        raise TypeError(f'\npassed array does not conform to WSE expectations\n{e}\n'+msg) from e
         
     
 def assert_wsh_ar(ar, msg='', assert_partial=True):
