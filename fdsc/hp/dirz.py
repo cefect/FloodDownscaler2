@@ -48,37 +48,24 @@ def get_od(out_dir):
         os.makedirs(out_dir)        
     return out_dir
 
-#===============================================================================
-# def get_filepaths_from_structure(test_data_dir):
-#     """load data from directory structure"""
-#  
-#     raster_dict = {}
-#  
-#     for test_case_name in  os.listdir(test_data_dir):
-#         
-#     
-#         # Find raster files within the subdirectory
-#         sub_dir = os.path.join(test_data_dir, test_case_name)
-#         if '.' in sub_dir: continue
-#         raster_dict[test_case_name]=dict()
-#         
-#         for resolution in os.listdir(sub_dir):
-#             if os.path.isfile(os.path.join(sub_dir, resolution)): continue
-#             raster_dict[test_case_name][resolution] = dict()
-#             
-#             for fn in os.listdir(os.path.join(sub_dir, resolution)):
-#                 fp=  os.path.join(sub_dir, resolution, fn)
-#                 k=None
-#                 if fn.endswith(".tif"):
-#                     if fn.startswith("DEM_raw"):
-#                         k='dem'
-#                     elif fn.startswith("res_fluv"):
-#                         k='wsh'
-#                         
-#                 if not k is None:
-#                     raster_dict[test_case_name][resolution][k] = fp
-#                             
-#          
-# 
-#     return raster_dict
-#===============================================================================
+
+def make_dir(path):
+    """
+    Create the directory for the given path if it does not exist.
+    If the path is a file, create the parent directory.
+    If the path is a directory, create the directory itself.
+    
+    Parameters:
+    path (str): The file or directory path.
+    """
+    if os.path.splitext(path)[1]:  # Check if there is a file extension
+        # If the path is a file, create the parent directory
+        bdir = os.path.dirname(path)
+        if not os.path.exists(bdir):
+            os.makedirs(bdir)
+    else:
+        # If the path is a directory, create it if it does not exist
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+ 
