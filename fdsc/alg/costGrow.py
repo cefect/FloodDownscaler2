@@ -16,7 +16,8 @@ import scipy.ndimage
 import skimage.graph
 from osgeo import gdal, gdal_array
 
-from ..parameters import today_str
+ 
+from ..hp.basic import LoggedException, today_str
 from ..hp.dirz import get_od
 from ..hp.logr import get_new_file_logger, get_log_stream
 from ..hp.xr import (
@@ -804,7 +805,7 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
         try:
             wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName), method=distance_fill_method)
         except Exception as e:
-            raise Exception(f'distance_fill = {distance_fill} failed on wse_fine_xr2\n') from e
+            raise LoggedException(f'distance_fill = {distance_fill} failed on wse_fine_xr2\n    {e}', log=log) from e
             
         
         
