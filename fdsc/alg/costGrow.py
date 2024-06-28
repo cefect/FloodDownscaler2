@@ -321,8 +321,8 @@ def _distance_fill(mar,
     """
     
     assert isinstance(mar, ma.MaskedArray)
-    assert mar.mask.any()
-    assert not mar.mask.all()
+    assert mar.mask.any(), 'array has no mask'
+    assert not mar.mask.all(), f'array is fully masked'
     
     plog = lambda msg: print(msg) if log is None else log.debug(msg)
     
