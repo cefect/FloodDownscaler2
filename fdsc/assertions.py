@@ -369,7 +369,7 @@ def assert_wse_vs_dem_xr(wse_xr, dem_xr, msg='', **kwargs):
  
 
 
-def assert_integer_like_and_nearly_identical(arr, rtol=1e-3, atol=1e-3):
+def assert_integer_like_and_nearly_identical(arr, rtol=1e-3, atol=1e-3, msg=''):
     """
     Asserts that all values in a NumPy array are:
 
@@ -384,20 +384,21 @@ def assert_integer_like_and_nearly_identical(arr, rtol=1e-3, atol=1e-3):
     Raises:
         AssertionError: If any value is not close to an integer or if values are not nearly identical.
     """
-
+    
     if not __debug__:  # Skip assertion in optimized mode (-O)
         return
-
+    
+    msg = f'\n    {arr}\n    '+msg
     # Check if all values are close to integers
     if not np.allclose(arr, arr.astype(int), rtol=rtol, atol=atol):
         raise AssertionError(
-            f"Not all values in the array are close to integers within tolerance (rtol={rtol}, atol={atol})."
+            f"non-integers (rtol={rtol}, atol={atol})"+  msg
         )
 
     # Check if all values are nearly identical
     if not np.allclose(arr, arr.mean(), rtol=rtol, atol=atol):
         raise AssertionError(
-            f"Values in the array are not nearly identical within tolerance (rtol={rtol}, atol={atol})."
+            f"not equivalent (rtol={rtol}, atol={atol})."+  msg
         )
 
 

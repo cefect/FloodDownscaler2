@@ -1072,13 +1072,11 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     assert isinstance(coarse_shape, tuple)
     assert len(coarse_shape)==2
     
-    shape_rat_t = tuple([dem_fine_xr.shape[i]/e for i,e in enumerate(coarse_shape)])
- 
-    
-    
+    shape_rat_t = tuple([dem_fine_xr.shape[i]/e for i,e in enumerate(coarse_shape)])    
     
     #shape_rat_t = shape_ratio(dem_fine_xr, wse_coarse_xr) 
-    assert_integer_like_and_nearly_identical(np.array(shape_rat_t))
+    assert_integer_like_and_nearly_identical(np.array(shape_rat_t), 
+             msg=f'shape ratios from coarse_shape={coarse_shape}\n    fine_shape={dem_fine_xr.shape}')
     
     downscale=int(shape_rat_t[0])
     
