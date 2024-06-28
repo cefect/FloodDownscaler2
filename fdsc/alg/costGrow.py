@@ -736,10 +736,14 @@ def _02_wetPartials(wse_fine_xr1, dem_fine_xr,
     
     
     wse_mar = wse_fine_xr1.to_masked_array()
+    
     wse_mar2 = ma.MaskedArray(np.nan_to_num(wse_mar.data, nodata), 
         mask=np.logical_or(
             np.logical_or(dem_mar.mask, wse_mar.mask), #union of masks
             wse_mar <= dem_mar)) #below ground water
+    
+    if wse_mar2.mask.all():
+        raise LoggedException(f'02_wetPartials fully masks the {wse_fine_xr1.notnull().sum().item()} wet WSE cells')
     
     wse_fine_xr2 = dataarray_from_masked(wse_mar2, wse_fine_xr1)
     #===========================================================================
@@ -752,6 +756,8 @@ def _02_wetPartials(wse_fine_xr1, dem_fine_xr,
             raise AssertionError('expected wet-cell count to decrease during wet-partial treatment')
         to_gtiff(wse_fine_xr2, phaseName)
         assert_xr_geoTiff(wse_fine_xr2)
+        assert_wse_xr(wse_fine_xr2, msg='_02_wetPartials post')
+ 
     return wse_fine_xr2
 
 
@@ -774,6 +780,7 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
         distance_xr = dataarray_from_masked(ma.MaskedArray(distance_ar, mask=False), dem_fine_xr)
         distance_xr.attrs['layerName'] = '0distance'
         to_gtiff(distance_xr, phaseName)
+        assert not wse_fine_xr2.isnull().all()
     #===========================================================================
     #    03.1 growth threshold------
     #===========================================================================
