@@ -800,8 +800,14 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
     #===========================================================================
     """seems like there should be  away to apply grow_thresh_bar to speed up the distance calcs below"""
     if distance_fill == 'neutral':
-        wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName), 
-            method=distance_fill_method)
+        
+        try:
+            wse_filled_ar = _distance_fill(wse_fine_xr2.to_masked_array(), log=log.getChild(phaseName), method=distance_fill_method)
+        except Exception as e:
+            raise Exception(f'distance_fill = {distance_fill} failed on wse_fine_xr2\n') from e
+            
+        
+        
         if debug:
             wse_filled_xr = dataarray_from_masked(ma.MaskedArray(wse_filled_ar), wse_fine_xr2)
     elif distance_fill == 'terrain_penalty':
