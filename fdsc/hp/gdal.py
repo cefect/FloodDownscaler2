@@ -110,7 +110,7 @@ def build_vrt(ofp, fp_l, log=None,
         
         #[apath(f) for f in fp_l]
     
-    pprint.pprint(fp_l)
+    #pprint.pprint(fp_l)
     #===========================================================================
     # # create a vrt raster using gdal from the filenames in 'fp_l'
     #===========================================================================
