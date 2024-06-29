@@ -4,7 +4,10 @@ Created on Jun. 2, 2024
 @author: cef
 '''
 
-import logging, os
+#===============================================================================
+# IMPORTS---------
+#===============================================================================
+import logging, os, pprint
 from osgeo import gdal
 from .dirz import make_dir
 
@@ -12,6 +15,9 @@ from pathlib import PureWindowsPath, Path
 apath = lambda x:str(Path(x).resolve())
 
 
+#===============================================================================
+# FUNCS--------
+#===============================================================================
 def calculate_slope(input_dem, output_slope, scale=1, slope_format='percent'):
     """
     Calculates slope from a DEM using GDAL.
@@ -52,7 +58,7 @@ def build_vrt(ofp, fp_l, log=None,
     #===========================================================================
     if log is None: log=logging.getLogger('r')
     log = log.getChild('gdal.BuildVRT')
-    
+    make_dir(ofp)
     #===========================================================================
     # gdal config
     #===========================================================================
@@ -92,13 +98,19 @@ def build_vrt(ofp, fp_l, log=None,
     #ensure teh paths are resolved
  
     if use_relative:
-        vrt_dir = os.path.dirname(ofp)
+        vrt_dir = apath(os.path.dirname(ofp))
+        try:
+            os.path.relpath(fp_l[0], vrt_dir)
+        except Exception as e:
+            raise Exception(f'failed to relpath from \n    {vrt_dir}\n    {fp_l[0]}\n    {e}') from e
+        
         fp_l = [os.path.relpath(fp, vrt_dir) for fp in fp_l]
         
         os.chdir(vrt_dir)
         
         #[apath(f) for f in fp_l]
     
+    pprint.pprint(fp_l)
     #===========================================================================
     # # create a vrt raster using gdal from the filenames in 'fp_l'
     #===========================================================================
