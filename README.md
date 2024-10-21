@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/708846122.svg)](https://doi.org/10.5281/zenodo.10969456)
+
 # FloodDownscaler
 
 Tools for downscaling/disaggregating flood hazard grids
