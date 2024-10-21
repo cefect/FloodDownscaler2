@@ -1,185 +1,241 @@
 '''
-Created on Dec. 4, 2022
+Created on May 25, 2024
 
-@author: cefect
+@author: cef
 '''
-import pytest, os, tempfile, datetime
-from collections import OrderedDict
+
+
+#===============================================================================
+# IMPORTS------
+#===============================================================================
+import os, pathlib, pytest, logging, sys, tempfile, pickle, copy, warnings
+ 
+import rioxarray
 import numpy as np
-import numpy.ma as ma
-import pandas as pd
-import rasterio as rio
-import shapely.geometry as sgeo
-from shapely.geometry import mapping, Polygon
- 
-import fiona
-import fiona.crs
-from pyproj.crs import CRS
+from ..fdsc.hp.dirz import recursive_file_search
+from ..fdsc.hp.xr import coarsen_dataarray, resample_match_xr, wse_to_wsh_xr, xr_to_GeoTiff
 
-#project
-from parameters import src_dir
-from tests._params import epsg, bounds
-from fdsc.hp._params import temp_dir
-#from fdsc.base import nicknames_d
-
-#helpers
 #===============================================================================
-# from hp.tests.tools.rasters import get_rlay_fp
-# from hp.tests.conftest import init_kwargs
-from fdsc.hp.logr import get_new_console_logger, logging
-# from hp.rio import write_array, write_array2
-# from hp.riom import assert_masked_ar
+# Parameters-------
 #===============================================================================
+write_to_test_data=False #control for writing test results to test_data_dir
+if write_to_test_data:
+    warnings.warn(f'write_to_test_data=True. test data will be over-written')
 
 
+
+
+#===============================================================================
+# TEST_DATA------------
+#===============================================================================
+"""the test data library is kept separate (should make available for download)
+contains these cases:
+    case_01\
+    case_ahr\
+    case_jordan\
     
-#===============================================================================
-# TEST PARAMETERS-----------
-#===============================================================================
-# common test methodName and associated parameters.
-"""because we use non-default pars for speeding up the tests
-use:
-    @pytest.mark.parametrize(*par_algoMethodKwargs)
+additional 'phase' parameters are used to allow for intermediate test data
+    
 """
-par_method_kwargs = {
-    'CostGrow': {},
-    'CostGrow': dict(loss_frac=0.01),
-    'Basic': {},
-    'SimpleFilter': {},
-    'BufferGrowLoop': {'loop_range': range(2)},
-    'Schumann14': {'buffer_size': float(2/3)}
-}
-
-par_algoMethodKwargs = ('method, kwargs', [(k,v) for k,v in par_method_kwargs.items()])
-#@pytest.mark.parametrize(*par_algoMethodKwargs)
+#===============================================================================
+# load from directory
+#===============================================================================
+from definitions import test_data_dir_fdsc as test_data_dir
  
 
-
-#check it
-#miss_s = {e[0] for e in par_algoMethodKwargs[1]}.difference(nicknames_d.keys())
-#assert miss_s==set(), 'parameter key mismatch: %s'%miss_s
-
-#===============================================================================
-# TEST DATA---------
-#===============================================================================
-
-crs_default = CRS.from_user_input(epsg)
-bbox_default = sgeo.box(*bounds)
-
-#not sure what happen to the fred01 data
-#===============================================================================
-# proj_lib = dict()
-# proj_lib['fred01'] = {
-#     # test raw data
-#     'wse2_rlay_fp':os.path.join(src_dir, r'tests/data/fred01/testr_test00_0806_fwse.tif'),
-#     'aoi_fp':os.path.join(src_dir, r'tests/data/fred01/aoi_T01.geojson'),
-#     'crs':CRS.from_user_input(3979),
-#     
-#     # p1_downscale_wetPartials
-#     'wse1_rlay2_fp':os.path.join(src_dir, r'tests/data/fred01/wse1_ar2.tif'),
-#     
-#     # p2_dp_costGrowSimple._filter_dem_violators
-#     'wse1_rlay3_fp':os.path.join(src_dir, r'tests/data/fred01/wse1_ar3.tif'),
-#         
-#     'dem1_rlay_fp':os.path.join(src_dir, r'tests\data\fred01\dem.tif'),
-#     
-#     # validation data
-#     'wse1_rlayV_fp':os.path.join(src_dir, r'tests/data/fred01/vali/wse1_arV.tif'),
-#     'sample_pts_fp':os.path.join(src_dir, r'tests/data/fred01/vali/sample_pts_0109.geojson'),
-#     'samp_gdf_fp':os.path.join(src_dir, r'tests/data/fred01/vali/samps_gdf_0109.pkl'),
-#     'inun_vlay_fp':os.path.join(src_dir, r'tests/data/fred01/vali/inun_vali1.geojson'),
-#     'hwm_pts_fp':os.path.join(src_dir, r'tests/data/fred01/vali/hwm_pts_0303.geojson'),
-#     
-#     # post data
-#     'valiM_fp_d':{
-#         'cgs':os.path.join(src_dir, r'tests/data/fred01/post/cgs_0109_valiMetrics.pkl'),
-#         'noDP':os.path.join(src_dir, r'tests/data/fred01/post/none_0109_valiMetrics.pkl'),
-#         },
-#     }
-#===============================================================================
+print(f'loading test data from \n    {test_data_dir}')
+if os.path.exists(test_data_dir):
+    test_data_lib = recursive_file_search(test_data_dir, ['.tif', '.pkl', '.gpkg'])
+else:
+    raise IOError(f'no test data directory found at: {test_data_dir}')
 
 #===============================================================================
-# helpers-----
+# #add toy data
 #===============================================================================
+from .data_toy import test_data_lib as toy_test_data_lib
+from .data_toy import ar_to_geoTiff
 
+temp_dir = tempfile.mkdtemp()
 
-def get_xy_coords(transform, shape):
-    """return an array of spatial values for x and y
+#create raster files from toy data
+"""would be nicer to do this on demand"""
+for caseName,v in toy_test_data_lib.copy().items():
+    toy_test_data_lib[caseName]['00_raw'] = dict() 
+    for k in ['dem_fine', 'wse_coarse', 'dem_coarse']:
+        ar = v[k+'_ar']
+        fp = os.path.join(temp_dir, 'conftest', caseName, k+'.tif')
+        toy_test_data_lib[caseName]['00_raw'][k] = ar_to_geoTiff(ar, fp)
     
-    surprised there is no builtin
-    
-    this is needed  by xarray
-    
-    print(f'x, cols:{s[1]}    y, rows:{s[0]}')
+    #handle toy data w/ some data files
+    if caseName in test_data_lib:
+        toy_test_data_lib[caseName].update(test_data_lib[caseName])
+ 
+#update the test lib
+test_data_lib.update(toy_test_data_lib)
+
+
+#===============================================================================
+# helpers---------
+#===============================================================================
+
+def _geoTiff_to_xr(fp): 
+    da = rioxarray.open_rasterio(fp,masked=False).squeeze().compute().rio.write_nodata(-9999)
+    return da.where(da!=-9999, np.nan)
+
+def _get_xr(caseName, phase, dataName):
+ 
+    assert phase in test_data_lib[caseName], f'missing {caseName}.{phase}'
+    d = test_data_lib[caseName][phase]
     """
-    transformer = rio.transform.AffineTransformer(transform) 
-    x_ar, _ = transformer.xy(np.full(shape[1], 0), np.arange(shape[1]))  # rows, cols            
-    _, y_ar = transformer.xy(np.arange(shape[0]), np.full(shape[0], 0))  # rows, cols
+    print(test_data_lib[caseName][phase].keys())
+    """
     
-    return x_ar, y_ar
-                      
+    """switched to always load to workaorund deepcopy
+    #load from file once
+    if not dataName in d:"""
+        
+    k2 = dataName.replace('_xr', '')
+    
+    if not k2 in d:
+        raise KeyError(k2)
+    
+    fp = d[k2]
+    
+    print(f'loading \'{dataName}\' from pickle file\n    {fp}')
+    with open(fp, "rb") as f:
+        da = pickle.load(f)
  
- 
+    da = da.rio.write_nodata(-9999)    
+        
+    """deepcopy is not copying the rio data
+    #check it
+    da = copy.deepcopy(test_data_lib[caseName][phase][dataName])"""
+    from ..fdsc.assertions import assert_xr_geoTiff        
+    assert_xr_geoTiff(da, msg='%s.%s.%s'%(caseName, phase, dataName))
+    
+        
+    return da
 
 
-def get_aoi_fp(bbox, crs=crs_default, ofp=None):
-    
-    if ofp is None:
-        ofp = os.path.join(temp_dir, 'aoi.geojson')
-        
-    # write a vectorlayer from a single bounding box
-    assert isinstance(bbox, Polygon)
-    with fiona.open(ofp, 'w', driver='GeoJSON',
-        crs=CRS.from_epsg(crs.to_epsg()),
-        schema={'geometry': 'Polygon',
-                'properties': {'id':'int'},
-            },
- 
-        ) as c:
-        
-        c.write({ 
-            'geometry':mapping(bbox),
-            'properties':{'id':0},
-            })
-        
-    return ofp
-
-    
 #===============================================================================
-# MISC----
+# fixtures---------
 #===============================================================================
-@pytest.fixture(scope='session')
-def write():
-    write = False
-    if write:
-        print('WARNING!!! runnig in write mode')
-    return write
 
 
 @pytest.fixture(scope='function')
-def test_name(request):
-    return request.node.name.replace('[', '_').replace(']', '_')
-
-
-@pytest.fixture(scope='session')
 def logger():
-    return get_new_console_logger(level=logging.DEBUG)
+    logging.basicConfig(
+                #filename='xCurve.log', #basicConfig can only do file or stream
+                force=True, #overwrite root handlers
+                stream=sys.stdout, #send to stdout (supports colors)
+                level=logging.INFO, #lowest level to display
+                format='%(asctime)s %(levelname)s %(name)s: %(message)s',  # Include timestamp
+                datefmt='%H:%M:%S'  # Format for timestamp
+                )
+    
+    #get a new logger and lower it to avoid messing with dependencies
+    log = logging.getLogger(str(os.getpid()))
+    log.setLevel(logging.DEBUG)
+    
+    
+    return log
+
+
+#===============================================================================
+# FIXTURES.DATA---------
+#===============================================================================
+@pytest.fixture(scope='function')
+def dem_fine_fp(caseName):
+    phase = '00_raw'
+    assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
+    assert phase in test_data_lib[caseName], f'missing phase: {caseName}.{phase}'
+    return copy.deepcopy(test_data_lib[caseName][phase]['dem_fine'])
 
 @pytest.fixture(scope='function')
-def init_kwargs(tmp_path,logger, test_name):
-    return dict(
-        out_dir=tmp_path, 
-        tmp_dir=os.path.join(tmp_path, 'tmp_dir'),
-        base_dir=tmp_path,
-        #prec=prec,
-        #proj_name='test', #probably a better way to propagate through this key 
-        run_name=test_name[:8].replace('_',''),
+def wse_coarse_fp(caseName, phase):
+    assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
+    return copy.deepcopy(test_data_lib[caseName][phase]['wse_coarse'])
+
+
+@pytest.fixture(scope='function')
+def dem_coarse_fp(caseName, phase):
+    assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
+    assert 'dem_coarse' in test_data_lib[caseName][phase], f'missing dem_coarse: {caseName}.{phase}'
+    return copy.deepcopy(test_data_lib[caseName][phase]['dem_coarse'])
+
+
+
+@pytest.fixture(scope='function')
+def wse_fine_xr(caseName, phase):
+    return _get_xr(caseName, phase, 'wse_fine_xr')
+
+@pytest.fixture(scope='function')
+def dem_fine_xr(caseName):
+    return _get_xr(caseName, '00_inputs', 'dem_fine_xr')
+
+@pytest.fixture(scope='function')
+def wse_coarse_xr(caseName):
+    return _get_xr(caseName, '00_inputs', 'wse_coarse_xr')
+
+
+
+
+@pytest.fixture(scope='function')
+def dem_coarse_xr(caseName, phase, dem_fine_xr, wse_coarse_xr):
+    
+    d = test_data_lib[caseName][phase]
+    dataName = 'dem_coarse_xr'
+    
+    #===========================================================================
+    # build
+    #===========================================================================
+#===============================================================================
+#     if not dataName in d:    
+#         from analysis.hp.xr import coarsen_dataarray
+# 
+#         d[dataName] = coarsen_dataarray(dem_fine_xr, wse_coarse_xr)
+#  
+#     return copy.deepcopy(test_data_lib[caseName][phase][dataName])
+#===============================================================================
+    
+
+    #return coarsen_dataarray(dem_fine_xr, wse_coarse_xr)
+    return resample_match_xr(dem_fine_xr, wse_coarse_xr)
+
+
+@pytest.fixture(scope='function')
+def wsh_coarse_fp(caseName, wse_coarse_fp, dem_coarse_xr, tmpdir, logger):
+    """ most functions are setup to take WSH.. so we want this as a test endpoint"""
+    assert caseName in test_data_lib, f'unrecognized caseName: \'{caseName}\''
+    
+    phase='00_raw'
+    d = test_data_lib[caseName][phase]
+ 
+    dataName = 'wsh_coarse'
+    if not dataName in d:
+        #===========================================================================
+        # create WSH data
+        #===========================================================================
+     
+        wse_xr = _geoTiff_to_xr(wse_coarse_fp) 
         
-        relative=True, 
+        #from FloodDownscaler2.fdsc.hp.xr import wse_to_wsh_xr, xr_to_GeoTiff
         
-        logger=logger, overwrite=True, logfile_duplicate=False,
-        )
+        wsh_xr = wse_to_wsh_xr(dem_coarse_xr, wse_xr, allow_low_wse=True, log=logger)
+        
+        #===========================================================================
+        # write
+        #===========================================================================
+        
+        d[dataName] = xr_to_GeoTiff(wsh_xr, os.path.join(tmpdir, 'wsh_coarse.tif'), compress=None)
+        
+    return test_data_lib[caseName][phase][dataName]
+
+
+
 
 
  
-    
+
+
+
