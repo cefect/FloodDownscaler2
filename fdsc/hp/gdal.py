@@ -1,360 +1,139 @@
 '''
-Created on Jul. 15, 2021
+Created on Jun. 2, 2024
 
-@author: cefect
-
-gdal/ogr helpers
-
-2021-07-24
-    was getting some strange phantom crashing
-    reverted and seems to be working again
+@author: cef
 '''
 
+#===============================================================================
+# IMPORTS---------
+#===============================================================================
+import logging, os, pprint
+from osgeo import gdal
+from .dirz import make_dir
+
+from pathlib import PureWindowsPath, Path
+apath = lambda x:str(Path(x).resolve())
+
 
 #===============================================================================
-# imports----------
+# FUNCS--------
 #===============================================================================
-import time, sys, os, logging, copy, tempfile, datetime
+def calculate_slope(input_dem, output_slope, scale=1, slope_format='percent'):
+    """
+    Calculates slope from a DEM using GDAL.
 
-from osgeo import ogr, gdal_array, gdal, osr
+    Args:
+        input_dem (str): Path to the input DEM raster file.
+        output_slope (str): Path to the output slope raster file.
+        scale (float, optional): Ratio of vertical units to horizontal units. Defaults to 1.
+        slope_format (str, optional): Slope format ('percent' or 'degrees'). Defaults to 'percent'.
+    """
+    
+    # Open the DEM
+    dem_ds = gdal.Open(input_dem)
 
-from osgeo.ogr import OGRERR_NONE
+    # Run the GDAL DEM slope algorithm
+    gdal.DEMProcessing(output_slope, dem_ds, 'slope', format=slope_format, scale=scale)
 
-import numpy as np
+    # Close the datasets
+    dem_ds = None  # Dereference the dataset object 
+    
+    
+    
+    
+def build_vrt(ofp, fp_l, log=None,
+              vrt_options = None,
+              use_relative=True,
+              ):
+    """build a gdal vrt from a collection of files
+    
+    params
+    --------------
+    use_relative: bool, default True
+        for portability, its usually best to use relative paths
+        
+    """
+    #===========================================================================
+    # defaults
+    #===========================================================================
+    if log is None: log=logging.getLogger('r')
+    log = log.getChild('gdal.BuildVRT')
+    make_dir(ofp)
+    #===========================================================================
+    # gdal config
+    #===========================================================================
+    def gdal_log_callback(pct, message, unknown):
+        if message is not None:
+            log.info(f"{pct*100:.2f}% - {message}")
+            
+    
+    def gdal_error_handler(err_class, err_no, err_msg):
+        if err_class == gdal.CE_Warning:
+            log.warning(f"GDAL Warning: {err_msg}")
+        elif err_class == gdal.CE_Failure:
+            log.error(f"GDAL Error: {err_msg}")
+        else:
+            log.info(f"GDAL Info: {err_msg}")
+            
+    
+    gdal.PushErrorHandler(gdal_error_handler)  # Register the custom error handler
+            
+            
+    if vrt_options is None:
+        vrt_options = gdal.BuildVRTOptions(
+                  separate=False, #whether each source file goes into a separate stacked band in the VRT band. 
+                  strict=False, #set to True if warnings should be failures
+                  #overwrite=True,
+                  callback=gdal_log_callback,
+                  callback_data=log,
+                  )
+        
+    og_dir = os.getcwd()
+    #===========================================================================
+    # precheck
+    #===========================================================================
+    for i, fp in enumerate(fp_l):
+        assert os.path.exists(fp), f'bad filepath on {i}/{len(fp_l)}\n    {fp}'
+        
+    #ensure teh paths are resolved
  
+    if use_relative:
+        vrt_dir = apath(os.path.dirname(ofp))
+        try:
+            os.path.relpath(fp_l[0], vrt_dir)
+        except Exception as e:
+            raise Exception(f'failed to relpath from \n    {vrt_dir}\n    {fp_l[0]}\n    {e}') from e
+        
+        fp_l = [os.path.relpath(fp, vrt_dir) for fp in fp_l]
+        
+        os.chdir(vrt_dir)
+        
+        #[apath(f) for f in fp_l]
+    
+    #pprint.pprint(fp_l)
+    #===========================================================================
+    # # create a vrt raster using gdal from the filenames in 'fp_l'
+    #===========================================================================
+    log.debug(f' gdal.BuildVRT on {len(fp_l)} files to \n    {ofp}')
+    
+    vrt = gdal.BuildVRT(ofp,fp_l, options=vrt_options)
+    if vrt is None:
+        raise IOError(f'gdal.BuildVRT failed to generate a result')
+    vrt.FlushCache()
+    
+    log.debug(f'finished on \n    {ofp}')
+    os.chdir(og_dir)
+    return ofp
 
- 
-mod_logger = logging.getLogger(__name__)
 
-#===============================================================================
-# classes------
-#===============================================================================
 
-#===============================================================================
-# class GeoDataBase(object): #wrapper for GDB functions
-#     
-#     def __init__(self,
-#                  fp, #filepath to gdb
-#                  name=None,
-#                  logger=mod_logger,
-#                  ):
-#         #=======================================================================
-#         # defaults
-#         #=======================================================================
-#         #logger setup
-#         self.logger = logger.getChild(os.path.basename(fp))
-#         if name is None: name = os.path.basename(fp)
-#         self.name=name
-#         self.fp = fp
-#         self.mstore = QgsMapLayerStore()
-#         #=======================================================================
-#         # #driver and data
-#         #=======================================================================
-#         self.driver = ogr.GetDriverByName("OpenFileGDB")
-#         
-#         self.data = self.driver.Open(fp, 0)
-#         
-#         #get layer info
-#         self.layerNames_l = [l.GetName() for l in self.data]
-#         
-#         logger.info('loaded GDB \'%s\' w/ %i layers \n    %s'%(
-#             name,len(self.layerNames_l), self.layerNames_l))
-#         
-#     def GetLayerByName(self, layerName, 
-#                        mstore=True, #whether to add the layer to the mstore (and kill on close)
-#                        ): #return a pyqgis layer
-#         
-#         assert layerName in self.layerNames_l, 'passed layerName not found \'%s\''%layerName
-#         
-#         #=======================================================================
-#         # load the layer
-#         #=======================================================================
-#         uri = "{0}|layername={1}".format(self.fp, layerName)
-#         
-#         vlay = QgsVectorLayer(uri,layerName,'ogr')
-#         
-#         #===========================================================================
-#         # checks
-#         #===========================================================================
-#         if not isinstance(vlay, QgsVectorLayer): 
-#             raise IOError
-#         
-#         #check if this is valid
-#         if not vlay.isValid():
-#             raise Error('loaded vlay \'%s\' is not valid. \n \n did you initilize?'%vlay.name())
-#         
-#         #check if it has geometry
-#         if vlay.wkbType() == 100:
-#             raise Error('loaded vlay has NoGeometry')
-#         
-#         #check coordinate system
-#         if not vlay.crs().isValid():
-#             raise Error('bad crs')
-#         
-#         if vlay.crs().authid() == '':
-#             print('\'%s\' has a bad crs'%layerName)
-#             
-#         #=======================================================================
-#         # wrap
-#         #=======================================================================
-#         
-#         if mstore: self.mstore.addMapLayer(vlay)
-#         
-#         self.logger.debug("loading with mstore=%s \n    %s"%(mstore, uri))
-#         
-#         return vlay
-#         
-#     def __enter__(self,):
-#         return self
-#     
-#     def __exit__(self, #destructor
-#                  *args,**kwargs):
-#         
-# 
-#         self.logger.debug('closing layerGDB')
-#         
-#         self.data.Release()
-#         
-#         self.mstore.removeAllMapLayers()
-#         
-#         #super().__exit__(*args,**kwargs) #initilzie teh baseclass
-#         
-#===============================================================================
 
-#===============================================================================
-# functions------
-#===============================================================================
-def rlay_to_array(rlay_fp, dtype=np.dtype('float32')):
-    """context managger?"""
-    #get raw data
-    ds = gdal.Open(rlay_fp)
-    band = ds.GetRasterBand(1)
-    
-    
-    ar_raw = np.array(band.ReadAsArray(), dtype=dtype)
-    
-    #remove nodata values
-    ndval = band.GetNoDataValue()
-    
- 
-    
-    del ds
-    del band
-    
-    return np.where(ar_raw==ndval, np.nan, ar_raw)
 
-def getNoDataCount(fp, dtype=np.dtype('float')):
-    """2022-05-10: this was returning some nulls
-    for rasters where I could not find any nulls"""
-    #get raw data
-    ar = rlay_to_array(fp)
-    
-    return np.isnan(ar).astype(int).sum()
 
-#===============================================================================
-# 
-# def get_layer_gdb_dir( #extract a specific layer from all gdbs in a directory
-#                  gdb_dir,
-#                  layerName='NHN_HD_WATERBODY_2', #layername to extract from GDBs
-#                  logger=mod_logger,
-#                  ):
-#     
-#     #=======================================================================
-#     # defaults
-#     #=======================================================================
-#     log=logger.getChild('get_layer_gdb_dir')
-#     
-#     
-#     #=======================================================================
-#     # #get filepaths
-#     #=======================================================================
-#     fp_l = [os.path.join(gdb_dir, e) for e in os.listdir(gdb_dir) if e.endswith('.gdb')]
-#     
-#     log.info('pulling from %i gdbs found in \n    %s'%(len(fp_l), gdb_dir))
-#     
-#     #=======================================================================
-#     # load and save each layer
-#     #=======================================================================
-#     d = dict()
-#     for fp in fp_l:
-# 
-#         """need to query layers in the gdb.. then extract a specific layer"""
-#          
-#         
-#         with GeoDataBase(fp, logger=log) as db:
-#             assert not db.name in d, db.name
-#             d[copy.copy(db.name)] = db.GetLayerByName(layerName, mstore=False)
-#         
-#  
-#             
-#     
-#     log.info('loaded %i layer \'%s\' from GDBs'%(len(d), layerName))
-#     
-#     return d
-# 
-# def get_nodata_val(rlay_fp):
-#     assert os.path.exists(rlay_fp)
-#     ds = gdal.Open(rlay_fp)
-#     band = ds.GetRasterBand(1)
-#     return band.GetNoDataValue()
-#     
-#     
-# 
-# 
-# 
-# 
-# def array_to_rlay(ar_raw, #convert a numpy array to a raster
-#                   
-#                   #raster properties
-#                   pixelWidth=None,
-#                   pixelHeight=None,
-#                   resolution=1.0,
-#                   rasterOrigin=(0,0), #upper left
-#                   epsg=4326,
-#                   nodata=-9999,
-#                   
-#                   #outputs
-#                   layname='array_to_rlay',
-#                   ofp=None,
-#                   out_dir=None,
-#                   ):
-#     """adapted from here:
-#     https://pcjericks.github.io/py-gdalogr-cookbook/raster_layers.html#create-raster-from-array
-#     """
-# 
-#     #===========================================================================
-#     # defaults
-#     #===========================================================================
-#     if pixelWidth is None and pixelHeight is None:
-#         assert isinstance(resolution, float)
-#         pixelWidth=resolution
-#         pixelHeight=resolution
-#         
-#     if out_dir is None:
-#         out_dir = os.path.join(tempfile.gettempdir(), __name__, 
-#                                datetime.datetime.now().strftime('%Y%m%d%M%S'))
-#         if not os.path.exists(out_dir): 
-#             os.makedirs(out_dir)
-#         
-#     if ofp is None:
-#         ofp = os.path.join(out_dir,layname+'.tif')
-#     
-#     assert isinstance(ar_raw, np.ndarray)
-#     #===========================================================================
-#     # extract
-#     #===========================================================================
-#     assert len(ar_raw.shape)==2, ar_raw.shape
-#     cols = ar_raw.shape[1]
-#     rows = ar_raw.shape[0]
-#     originX = rasterOrigin[0]
-#     originY = rasterOrigin[1]
-#     
-#     #===========================================================================
-#     # clean nodat
-#     #===========================================================================
-#     array = ar_raw.copy()
-#     array[np.isnan(array)]=nodata
-#     #===========================================================================
-#     # construct
-#     #===========================================================================
-#     #===========================================================================
-#     driver = gdal.GetDriverByName('GTiff')
-#     # outRaster = driver.Create(ofp, cols, rows, 1, gdal.GDT_Byte)
-#     # outRaster.SetGeoTransform((originX, pixelWidth, 0, originY, 0, pixelHeight))
-#     # outband = outRaster.GetRasterBand(1)
-#     # outband.WriteArray(array)
-#     #===========================================================================
-#     # outRasterSRS = osr.SpatialReference()
-#     # outRasterSRS.ImportFromEPSG(epsg)
-#     #===========================================================================
-#     # outRaster.SetProjection(outRasterSRS.ExportToWkt())
-#     # outband.FlushCache()
-#     # outRaster=None #close
-#     #===========================================================================
-#     
-#     dst_ds = driver.Create(ofp, xsize=cols, ysize=rows,
-#                     bands=1, eType=gdal.GDT_Float32)
-#     
-#     #dst_ds.SetGeoTransform([444720, 30, 0, 3751320, 0, -30])
-#     dst_ds.SetGeoTransform([originX, pixelWidth, 0, originY, 0, -pixelHeight])
-#     
-#     #build spatial ref
-#     #===========================================================================
-#     # srs = osr.SpatialReference()
-#     # srs.SetUTM(11, 1)
-#     # srs.SetWellKnownGeogCS("NAD27")
-#     #===========================================================================
-#     
-#     outRasterSRS = osr.SpatialReference()
-#     outRasterSRS.ImportFromEPSG(epsg)
-#     
-#     dst_ds.SetProjection(outRasterSRS.ExportToWkt())
-#  
-#     band = dst_ds.GetRasterBand(1)
-#     band.WriteArray(array)
-#     band.SetNoDataValue(nodata)
-#     band.FlushCache()
-#     # Once we're done, close properly the dataset
-#     dst_ds = None
-#     
-#     return ofp
-# 
-# def getRasterMetadata(fp):
-#     assert os.path.exists(fp)
-#     
-#     dataset = gdal.OpenEx(fp)
-#     
-#     md = copy.copy(dataset.GetMetadata('IMAGE_STRUCTURE'))
-#     
-#     del dataset
-#     
-#     return md
-#     
-# def getRasterCompression(fp):
-#     md = getRasterMetadata(fp)
-#     
-#     if not 'COMPRESSION' in md:
-#         return None
-#     else:
-#         return md['COMPRESSION']   
-#     
-# def getRasterStatistics(fp):
-#     ds = gdal.Open(fp)
-#  
-#     band = ds.GetRasterBand(1)
-#     d = dict()
-#     d['min'], d['max'], d['mean'], d['stddev'] = band.GetStatistics(True, True)
-#  
-#     
-#     del ds
-#     
-#     return d
-# 
-# 
-# 
-#     
-# 
-# def getCrs(fp):
-#     """retrive the CRS (EPSG:1234) from the file using gdal"""
-#     assert os.path.exists(fp), fp
-#     ds=gdal.Open(fp)
-#     proj=osr.SpatialReference(wkt=ds.GetProjection())
-#     assert proj.AutoIdentifyEPSG()==OGRERR_NONE
-#     del ds
-# 
-#     
-#     """alternative formats
-#     proj.ExportToWkt()
-#     proj.ExportToPrettyWkt()
-#     proj.ExportToMICoordSys()
-#     proj.ExportToProj4()"""
-#  
-#  
-#     return proj.GetAuthorityName(None) + ':' + proj.GetAuthorityCode(None)
-#===============================================================================
 
-    
-            
-            
-            
-            
+
+
+
+
+
+

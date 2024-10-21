@@ -25,16 +25,7 @@ The following downscaling algos have been implemented. These are typically speci
 #### CostGrow
 employs four phases shown below: 1) grid resampling; 2) least-cost mapping; 3) filtering high-and-dry sub-grid cells; and finally 4) an isolated-cell filter.
 ![alt text](./img/costGrow_steps.png)
-#### Basic
-simple grid resampling as in **BasicBilinear** shown below
-![alt text](./img/basic_steps.png)
-
-#### SimpleFilter
-As in Basic, with an additional step to filter high-and-dry cells (see **SimpleFilter**) above
-
-#### Schumann14
-Method from Schumann et al. (2014) with the three steps shown below
-![alt text](./img/schu14_steps.png)
+ 
 
 ## Related projects
 [FloodDownscaler](https://github.com/cefect/FloodDownscaler): original repo for HESS publication work
@@ -79,7 +70,10 @@ compiled binaries are available [here](https://www.whiteboxgeo.com/download-dire
 This is the preferred method as it provides greater version control. Typically, FloodDownscaler2 project is setup to use whitebox-tools v2.2.0 as a submodule. 
 Typical workflow:
 - clone whitebox-tools into the repo as a submodule and point to the v2.2.0 release tag.
-`git submodule add -b v2.2.0 https://github.com/cefect/whitebox-tools.git`
+```
+git submodule add -b v2.2.0_tweaks https://github.com/cefect/whitebox-tools.git
+git mv whitebox-tools whiteboxtools
+```
 - compile the tools. call the below within the newly cloned submodule folder. this may take a while and requires you to have rust installed (see whitebox-tools documentation for more info)
 `cargo build --release`
 - update paths per the above
@@ -105,8 +99,11 @@ import os
 #default working directory
 wrk_dir = r'L:\10_IO\fdsc2'
 
-#whitebox exe location
-wbt_dir = os.path.join(src_dir, r'whitebox-tools\target\release')
+#test source data directory
+test_data_dir = r'l:\10_IO\fdsc2\test_data'
+
+#whitebox-tools exe location
+wbt_dir = r'l:\09_REPOS\05_FORKS\whitebox-tools\target\release'
  
 ```
 

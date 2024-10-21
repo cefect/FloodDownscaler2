@@ -144,3 +144,6 @@ definitions.py
 
 #VS Code
 /.vscode
+
+#sophos
+/%ALLUSERSPROFILE%
