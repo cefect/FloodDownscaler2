@@ -1,0 +1,32 @@
+#name: USFloodEvents_ipynb
+channels:
+  - conda-forge
+dependencies:
+  # - python=3.12.*
+  #- geoviews
+  # - geopandas
+  - jupyterlab
+  #- hvplot
+  #- panel
+  #- bokeh
+  - notebook
+  - pyproj
+  - shapely
+  # - pandas
+  # - numpy
+  # - matplotlib
+  - ipykernel   # to register this env as a Jupyter kernel
+  #- black #linter
+  #- nbqa #linter
+  - contextily
+  - nbdime
+  - seaborn
+  - imageio
+  - matplotlib
+  - colorcet
+  # - tqdm
+  - openpyxl
+  - pip:
+      - palettable==3.3.3
+      - beautifulsoup4==4.14.3
+      - memory-profiler
