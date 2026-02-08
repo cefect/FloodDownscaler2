@@ -144,6 +144,10 @@ definitions.py
 
 #VS Code
 /.vscode
+*.code-workspace
+*.devcontainer
 
 #sophos
 /%ALLUSERSPROFILE%
+
+
