@@ -32,3 +32,16 @@ gdal_translate \
 
 ## wse_32m.tif
 copied from `l:\02_WORK\NRC\2207_dscale\99_Arch\up\data\fdsc\r32_b10_i65_0511\wd_max_WSE.tif`
+
+## dem_32m
+
+gdal_translate \
+  "tests/data/bryantTechnicalNoteResolution2024/dem005_r32_aoi13_0415.asc" \
+  "tests/data/bryantTechnicalNoteResolution2024/dem_32m.tif" \
+  -ot Float32 \
+  -co COMPRESS=LERC_DEFLATE \
+  -co PREDICTOR=2 \
+  -co ZLEVEL=6 \
+  -co MAX_Z_ERROR=0.001
+
+/home/cefect/LS/09_REPOS/04_TOOLS/FloodDownscaler2/tests/data/bryantTechnicalNoteResolution2024/dem005_r32_aoi13_0415.asc
