@@ -21,6 +21,10 @@ dependencies:
   - scikit-image
   - xarray=2023.5.*
   - tqdm
+  - pytest
+  - pip
+  - pip:
+    - whitebox==2.2.*
  
     
  

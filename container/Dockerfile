@@ -21,7 +21,7 @@ ARG TARGET_DIRS="/workspace /opt/conda"
 
 # ---- basic tools for HTC runs + permission tooling
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    #--mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
         acl \
         ca-certificates \
@@ -35,8 +35,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
        # less \
        # strace \
        # gdb \
-        binutils \
-    && rm -rf /var/lib/apt/lists/*
+        binutils
 
 # set permissions on target dirs for arbitrary users
 RUN for dir in $TARGET_DIRS; do \
@@ -51,7 +50,7 @@ RUN echo 'umask 000' >> /etc/bash.bashrc && \
     echo 'umask 000' >> /etc/profile 
 
 
-
+FROM base AS deploy
 
 # ---- 2) Build environments as root (fast, cacheable)
 COPY container/environment.yml /tmp/environment.yml
@@ -59,6 +58,7 @@ COPY container/environment.yml /tmp/environment.yml
 ARG env_name=deploy
 
 RUN --mount=type=cache,target=/opt/conda/pkgs,sharing=locked \
+    --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     conda config --set channel_priority strict && \
     mamba env create -yv --strict-channel-priority --name ${env_name} --file /tmp/environment.yml && \
     rm -f /tmp/environment.yml
@@ -98,15 +98,7 @@ CMD []
 
 
 
-FROM base AS deploy
  
-
-
-
-
-
-
-
 
 # DEV target -----------------------------
 
@@ -151,7 +143,7 @@ RUN set -eux; \
 
 # add to sudo + common dev tooling
 RUN  --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    #--mount=type=cache,target=/var/lib/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
         sudo \
         git \
@@ -162,10 +154,11 @@ RUN  --mount=type=cache,target=/var/cache/apt,sharing=locked \
         procps \
         less \
        strace \
-       gdb \
-    && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-${USERNAME} \
-    && chmod 0440 /etc/sudoers.d/90-${USERNAME} \
-    && rm -rf /var/lib/apt/lists/*
+       gdb
+
+# configure passwordless sudo in a separate layer for clearer cache boundaries
+RUN echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-${USERNAME} \
+    && chmod 0440 /etc/sudoers.d/90-${USERNAME}
 
 # Give the dev user ownership of places they'll modify (including conda dirs)
 RUN set -eux; \
@@ -204,6 +197,7 @@ COPY container/environment.yml /tmp/environment.yml
 COPY container/environment_analysis.yml /tmp/environment_analysis.yml
 
 RUN --mount=type=cache,target=/opt/conda/pkgs,sharing=locked \
+    --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     mamba env create -yv --strict-channel-priority --name analysis --file /tmp/environment.yml && \
     mamba env update -y --name analysis --file /tmp/environment_analysis.yml && \
     rm -f /tmp/environment.yml /tmp/environment_analysis.yml

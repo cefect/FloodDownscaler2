@@ -58,26 +58,15 @@ from WSL:
 ```bash
 
 #set the image name
-IMAGE_NAME='cefect/fdsc2:deploy-v0.2'
+IMAGE_NAME='cefect/fdsc2:deploy-v0.4'
 
 # build the container
-docker build -f container/Dockerfile -t $IMAGE_NAME --target deploy .
+docker buildx build -f container/Dockerfile -t $IMAGE_NAME --target deploy .
+ 
+ 
 
-```
-
-
-explore w/ a random user
-```bash
-echo $IMAGE_NAME
-
-docker run --user 12345:12345 -it --rm $IMAGE_NAME bash
-docker run -it --rm $IMAGE_NAME bash
-
-# dump installed packages
-docker run --rm $IMAGE_NAME conda run -n deploy python -m pip freeze > container/pip-freeze-deploy.txt
-
-#conda dump
-docker run --rm $IMAGE_NAME conda env export -n deploy > container/conda-env-deploy.yml
+# dump installed packages + conda env with one container invocation
+docker run --rm -v "$PWD/container:/out" $IMAGE_NAME bash -lc "conda run -n deploy python -m pip freeze > /out/pip-freeze-deploy.txt && conda env export -n deploy > /out/conda-env-deploy.lock.yml"
 ```
 
 push to Docker Hub
@@ -91,12 +80,13 @@ docker push $IMAGE_NAME
 ## Build Images: dev
 from WSL
 ```bash
-IMAGE_NAME='cefect/fdsc2:dev-v0.2'
-docker build -f container/Dockerfile -t $IMAGE_NAME --target dev .
+IMAGE_NAME='cefect/fdsc2:dev-v0.5'
+docker buildx build -f container/Dockerfile -t $IMAGE_NAME --target dev .
 ```
 
  
-update devcontainer docker-compose.yml to use new image
-
-see `.devcontainer/readme.md`
+update the .devcontainer/compose
+```bash
  
+yq -y -i '.services.tensorflow.image = env.IMAGE_NAME' .devcontainer/docker-compose.yml
+```
