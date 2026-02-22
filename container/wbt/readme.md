@@ -16,7 +16,7 @@ from WSL:
 ```bash
 
 #set the image name and build
-tag='v1.1'
+tag='v1.2'
 export IMAGE_NAME='cefect/fdsc2:deploy-'$tag 
 docker buildx build -f container/wbt/Dockerfile -t $IMAGE_NAME --target deploy .
  

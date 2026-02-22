@@ -4,6 +4,7 @@ Created on May 26, 2024
 @author: cef
 '''
 import logging, os, multiprocessing, subprocess
+import warnings
 
 #===============================================================================
 # build info
@@ -27,7 +28,7 @@ import logging, os, multiprocessing, subprocess
 # num_processors_mp = multiprocessing.cpu_count()
 # print(f"Number of available processors (multiprocessing module): {num_processors_mp}")
 #===============================================================================
-
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 current_wdir = os.getcwd() #WBT moves htis
 
 from ..parameters import log_level
@@ -36,9 +37,41 @@ from ..parameters import log_level
 from whitebox import WhiteboxTools
 wbt = WhiteboxTools()
 
-from definitions import wbt_dir, wrk_dir
-wbt.set_whitebox_dir(wbt_dir)
-wbt.set_working_dir(wrk_dir) 
+# resolve WhiteboxTools executable directory from environment with package fallback
+default_wbt_dir = wbt.exe_path
+resolved_wbt_dir = default_wbt_dir
+configured_wbt_dir = None
+configured_wbt_key = None
+for env_key in ("FDSC_WBT_DIR", "WHITEBOXTOOLS_DIR", "WBT_DIR"):
+    env_value = os.environ.get(env_key)
+    if env_value:
+        configured_wbt_dir = os.path.abspath(os.path.expanduser(env_value))
+        configured_wbt_key = env_key
+        break
+
+if configured_wbt_dir:
+    configured_wbt_fp = configured_wbt_dir
+    if os.path.isdir(configured_wbt_dir):
+        configured_wbt_fp = os.path.join(configured_wbt_dir, wbt.exe_name)
+
+    if os.path.isfile(configured_wbt_fp):
+        resolved_wbt_dir = os.path.dirname(configured_wbt_fp)
+    else:
+        warnings.warn(
+            f"invalid ${configured_wbt_key} for {wbt.exe_name}. expected executable at \n    {configured_wbt_fp}\n"
+            f"using package default at \n    {default_wbt_dir}"
+        )
+
+resolved_wbt_fp = os.path.join(resolved_wbt_dir, wbt.exe_name)
+if not os.path.isfile(resolved_wbt_fp):
+    raise FileNotFoundError(
+        f"WhiteboxTools executable not found: \n    {resolved_wbt_fp}\n"
+        f"set FDSC_WBT_DIR to a directory or full path containing {wbt.exe_name}"
+    )
+# if not os.path.exists(wrk_dir):
+#     warnings.warn(f'Working directory not found: {wrk_dir}')
+wbt.set_whitebox_dir(resolved_wbt_dir)
+wbt.set_working_dir(project_root) 
 wbt.set_compress_rasters(True)
 wbt.set_max_procs(1) #needed by HPC?
 #===============================================================================
@@ -82,5 +115,3 @@ def wbt_subprocess(command, log=None, debug=False):
 class WhiteBoxToolsCallFail(Exception):
     """Exception raised for errors in the execution of WhiteBoxTools."""
     pass
-
-

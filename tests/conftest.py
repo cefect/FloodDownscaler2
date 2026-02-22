@@ -111,8 +111,10 @@ def _get_xr(caseName, phase, dataName):
     """deepcopy is not copying the rio data
     #check it
     da = copy.deepcopy(test_data_lib[caseName][phase][dataName])"""
+    print(f'loaded \'{caseName}.{phase}.{dataName}\' with \n shape {da.shape} and CRS {da.rio.crs}')
     from ..fdsc.assertions import assert_xr_geoTiff        
     assert_xr_geoTiff(da, msg='%s.%s.%s'%(caseName, phase, dataName))
+      
     
         
     return da
