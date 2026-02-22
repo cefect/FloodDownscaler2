@@ -61,8 +61,14 @@ RUN --mount=type=cache,target=/opt/conda/pkgs,sharing=locked \
 # deploy smoke test: whitebox must work
 RUN conda run -n "${CONDA_NAME}" python /workspace/container/smoke_test_whitebox.py
 
+# deploy smoke test: GDAL Python bindings must work
+RUN conda run -n "${CONDA_NAME}" python -c "from osgeo import gdal, gdal_array"
+
 # deploy smoke test: seaborn must not exist in deploy env
 RUN conda run -n "${CONDA_NAME}" python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('seaborn') is None else 1)"
+
+# ensure non-login commands resolve to the deploy env
+ENV PATH="${CONDA_DIR}/envs/${CONDA_NAME}/bin:${CONDA_DIR}/condabin:${PATH}"
 
 
 # activate the environment by default for all users
@@ -205,6 +211,9 @@ RUN --mount=type=cache,target=/opt/conda/pkgs,sharing=locked \
     conda create -yv --name "${DEV_CONDA_NAME}" --clone "${CONDA_NAME}" && \
     mamba install -yv --strict-channel-priority --name "${DEV_CONDA_NAME}" --file /tmp/environment_dev.yml && \
     rm -f /tmp/environment_dev.yml
+
+# ensure non-login commands resolve to the dev env in this target
+ENV PATH="${CONDA_DIR}/envs/${DEV_CONDA_NAME}/bin:${CONDA_DIR}/condabin:${PATH}"
 
 RUN conda env config vars set PYTHONPATH=/workspace --name "${DEV_CONDA_NAME}"
 
