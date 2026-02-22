@@ -43,10 +43,22 @@ import pyproj
 
         
         
-def _write_to_pick(data, fp, log=None):
-    """writing pickels for tests"""
-    
-    plog = lambda msg: print(msg) if log is None else log.debug(msg)
+def _write_to_pick(
+    data,
+    fp,
+    log,
+):
+    """Write a Python object to a pickle file.
+
+    Parameters
+    ----------
+    data : object
+        Serializable Python object to persist.
+    fp : str
+        Output pickle filepath.
+    log : logging.Logger
+        Logger used for debug output.
+    """
     
     if not os.path.exists(os.path.dirname(fp)):
         os.makedirs(os.path.dirname(fp))
@@ -54,7 +66,7 @@ def _write_to_pick(data, fp, log=None):
     with open(fp, "wb") as f:
         pickle.dump(data, f)
  
-    plog(f'wrote to pickle\n    {fp}')
+    log.debug(f'wrote to pickle\n    {fp}')
         
     
 def _get_zero_padded_shape(shape):
@@ -85,10 +97,35 @@ def _get_zero_padded_shape(shape):
         return None  # Or raise the exception again, depending on your needs
 
 
-def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=None,
-                                cd_backend='wbt',out_dir=None,m_to_rad=1.0, 
-                                **kwargs
-                                ):
+def _distance_fill_cost_terrain(
+    wse_fine_xr,
+    dem_fine_xr,
+    wse_coarse_xr,
+    log,
+    cd_backend="wbt",
+    out_dir=None,
+    m_to_rad=1.0,
+    **kwargs,
+):
+    """Fill dry cells using a terrain-derived cost surface.
+
+    Parameters
+    ----------
+    wse_fine_xr : xarray.DataArray
+        Fine-resolution water surface elevation raster with masked dry cells.
+    dem_fine_xr : xarray.DataArray
+        Fine-resolution DEM raster aligned to `wse_fine_xr`.
+    wse_coarse_xr : xarray.DataArray
+        Coarse-resolution WSE raster used to derive terrain-aware costs.
+    log : logging.Logger
+        Logger for step-level debug statements.
+    cd_backend : str
+        Cost-distance backend identifier (`"wbt"` or `"skimage"`).
+    out_dir : str or None
+        Optional directory for backend intermediates.
+    m_to_rad : float
+        Meter-to-grid conversion factor (currently not applied).
+    """
     
  
     #===========================================================================
@@ -150,9 +187,21 @@ def _distance_fill_cost_terrain(wse_fine_xr, dem_fine_xr, wse_coarse_xr, log=Non
     
     return wse_filled_xr
 
-def _distance_fill_cost_skimage(mar, cost_ar, log=None):
-    """
-    Fills masked values in a 2D array using cost-distance weighted nearest neighbor interpolation.
+def _distance_fill_cost_skimage(
+    mar,
+    cost_ar,
+    log,
+):
+    """Fill masked cells using skimage minimum-cost-path traversal.
+
+    Parameters
+    ----------
+    mar : numpy.ma.MaskedArray
+        Input masked raster where masked cells are targets to fill.
+    cost_ar : numpy.ndarray
+        2D non-negative movement-cost array aligned to `mar`.
+    log : logging.Logger
+        Logger used for debug output.
 
     this is WAY too slow
     
@@ -164,10 +213,8 @@ def _distance_fill_cost_skimage(mar, cost_ar, log=None):
     assert mar.mask.any()
     assert not mar.mask.all()
     
-    plog = lambda msg: print(msg) if log is None else log.debug(msg)
- 
     # Create MCP object with cost surface
-    plog(f'init on skimage.graph.MCP w/ {np.invert(mar.mask).sum()} source cells')
+    log.debug(f'init on skimage.graph.MCP w/ {np.invert(mar.mask).sum()} source cells')
     mcp = skimage.graph.MCP(cost_ar,
                         fully_connected=False, #d4
                         sampling=None, #square grid
@@ -176,7 +223,7 @@ def _distance_fill_cost_skimage(mar, cost_ar, log=None):
     end_indices = np.argwhere(mar.mask)  # Coordinates of masked cells
     
     # Find least-cost paths from all masked points to unmasked points
-    plog(f'mcp.find_costs')
+    log.debug(f'mcp.find_costs')
     cumulative_costs, traceback_ar = mcp.find_costs(
         starts=np.argwhere(~mar.mask),
         #ends=end_indices, #specifying these doesn't seem to improve performance
@@ -204,16 +251,31 @@ def _distance_fill_cost_skimage(mar, cost_ar, log=None):
  #        filled_ar[i, j] =  mar.data[start]
  #==============================================================================
     # Fill Masked Values (List Comprehension Version)
-    plog(f'filling destination cells w/ least-cost sources')
+    log.debug(f'filling destination cells w/ least-cost sources')
     filled_ar[tuple(zip(*end_indices))] = [
         mar.data[mcp.traceback(idx)[0]] for idx in tqdm(end_indices, desc='distance_fill_cost')
         ]
     
     return filled_ar
 
-def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
-    """
-    Fills masked values in a 2D array using cost-distance weighted nearest neighbor interpolation.
+def _distance_fill_cost_wbt(
+    wse_xr,
+    cost_xr,
+    log,
+    out_dir=None,
+):
+    """Fill masked WSE cells via WhiteboxTools cost distance and allocation.
+
+    Parameters
+    ----------
+    wse_xr : xarray.DataArray
+        WSE raster where non-null cells are source locations.
+    cost_xr : xarray.DataArray
+        Non-negative movement cost raster aligned with `wse_xr`.
+    log : logging.Logger
+        Logger for WhiteboxTools and IO diagnostics.
+    out_dir : str or None
+        Optional directory for temporary GeoTIFFs and WBT outputs.
     """
 
     current_wdir = os.getcwd() #WBT moves htis
@@ -290,18 +352,21 @@ def _distance_fill_cost_wbt(wse_xr, cost_xr, log=None, out_dir=None):
 
 
 
-def _distance_fill(mar,
-                   method='distance_transform_cdt',
-                   log=None, 
-                   **kwargs):
-    """fill masked values with their nearest unmasked value
+def _distance_fill(
+    mar,
+    log,
+    method="distance_transform_cdt",
+    **kwargs,
+):
+    """Fill masked values with their nearest unmasked value.
     
-    Params
-    ------------
-    mar: numpy.masked.array
+    Parameters
+    ----------
+    mar : numpy.ma.MaskedArray
         dataset where masked values will be imputed
-        
-    method: str
+    log : logging.Logger
+        Logger used for debug output.
+    method : str
         scipy.ndimage method with which to apply the distance calc
             distance_transform_cdt: chamfer transform
                 fastest in 'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
@@ -324,10 +389,8 @@ def _distance_fill(mar,
     assert mar.mask.any(), 'array has no mask'
     assert not mar.mask.all(), f'array is fully masked'
     
-    plog = lambda msg: print(msg) if log is None else log.debug(msg)
-    
     #retrieve func
-    plog(f'_distance_fill w/ \'{method}\' {kwargs}')
+    log.debug(f'_distance_fill w/ \'{method}\' {kwargs}')
     f = getattr(scipy.ndimage, method)
     
     indices_ar = f(
@@ -341,13 +404,18 @@ def _distance_fill(mar,
     filled_ar[mar.mask] = mar.data[tuple(indices_ar[:, mar.mask])]
     
 
-    plog(f'finished _distance_fill')
+    log.debug(f'finished _distance_fill')
     return filled_ar
 
 
 
 
-def _meters_to_latlon(distance_meters, latitude, longitude, crs="EPSG:4326"):
+def _meters_to_latlon(
+    distance_meters,
+    latitude,
+    longitude,
+    crs="EPSG:4326",
+):
     """Converts a distance in meters to a latitude and longitude difference at a given location.
 
     Args:
@@ -384,15 +452,33 @@ def _meters_to_latlon(distance_meters, latitude, longitude, crs="EPSG:4326"):
     return lat_diff, lon_diff
 
 
-def _xr_gdalslope(dataarray, log=None, 
-                    alg="Horn", # literature suggests Zevenbergen & Thorne to be more suited to smooth landscapes, whereas Horn's formula to perform better on rougher terrain.
-                    slopeFormat="percent",
-                    scale=1,
-                    computeEdges=True,
-                    #zFactor=1,
-        
-                  **kwargs):
-    """compute teh slope of a rioxarray by sending it to gdal"""
+def _xr_gdalslope(
+    dataarray,
+    log,
+    alg="Horn", # literature suggests Zevenbergen & Thorne to be more suited to smooth landscapes, whereas Horn's formula to perform better on rougher terrain.
+    slopeFormat="percent",
+    scale=1,
+    computeEdges=True,
+    #zFactor=1,
+    **kwargs,
+):
+    """Compute slope from a raster DataArray with GDAL DEMProcessing.
+
+    Parameters
+    ----------
+    dataarray : xarray.DataArray
+        Input raster containing elevation values.
+    log : logging.Logger
+        Logger for debug output.
+    alg : str
+        GDAL slope algorithm name.
+    slopeFormat : str
+        Output slope units (for example, `"percent"`).
+    scale : float
+        Vertical-to-horizontal unit scaling factor passed to GDAL.
+    computeEdges : bool
+        Whether GDAL should estimate edge slope pixels.
+    """
     
  
     
@@ -457,9 +543,24 @@ def _xr_gdalslope(dataarray, log=None,
     
 
 
-def _cost_accumulation_wbt(wse_xr, cost_xr, log=None, out_dir=None):
-    """
-    Fills masked values in a 2D array using cost-distance weighted nearest neighbor interpolation.
+def _cost_accumulation_wbt(
+    wse_xr,
+    cost_xr,
+    log,
+    out_dir=None,
+):
+    """Compute WhiteboxTools cost accumulation from wet cells.
+
+    Parameters
+    ----------
+    wse_xr : xarray.DataArray
+        WSE raster where non-null cells define wet-source cells.
+    cost_xr : xarray.DataArray
+        Traversal-cost raster aligned with `wse_xr`.
+    log : logging.Logger
+        Logger used for step-level diagnostics.
+    out_dir : str or None
+        Optional output directory for intermediate rasters.
     """
     
     #===========================================================================
@@ -545,30 +646,40 @@ def _cost_accumulation_wbt(wse_xr, cost_xr, log=None, out_dir=None):
 
 
 
-def _dp_decay(dem_fine_xr, wse_fine_xr,
-              decay_method_d={'linear':dict(decay_frac=0.005)},
-                        m_to_rad=1.0, 
-                        pixel_size_m=1.0, 
-                        distance_ar=None,
-                        logger=None, debug=__debug__, 
-                        out_dir=None, 
-                        ):
-    """construct combined dry-partial decay array
-    
-    Parrams
-    -----------
-    decay_method_d: dict
-        {decay method: decay parameters}
-        
-        linear: distance*decay_frac
-        
-        slope_linear: accumuated slope * decay_frac
-        
-        slope_power: (accumuated slope * c)**n
-        
-        
-    
-     """
+def _dp_decay(
+    dem_fine_xr,
+    wse_fine_xr,
+    logger,
+    decay_method_d={"linear": dict(decay_frac=0.005)},
+    m_to_rad=1.0,
+    pixel_size_m=1.0,
+    distance_ar=None,
+    debug=__debug__,
+    out_dir=None,
+):
+    """Construct and combine dry-partial decay rasters.
+
+    Parameters
+    ----------
+    dem_fine_xr : xarray.DataArray
+        Fine-resolution DEM used for masking and georeferencing.
+    wse_fine_xr : xarray.DataArray
+        Fine-resolution WSE after wet-partial handling.
+    logger : logging.Logger
+        Parent logger used for decay-step logs.
+    decay_method_d : dict[str, dict]
+        Decay configuration keyed by method name (for example, `"linear"`).
+    m_to_rad : float
+        Conversion factor for projected/non-projected distance scaling.
+    pixel_size_m : float
+        Mean fine-grid pixel size in meters.
+    distance_ar : numpy.ndarray or None
+        Precomputed distance-to-wet array, shape-aligned to fine grid.
+    debug : bool
+        If True, write additional intermediate rasters.
+    out_dir : str or None
+        Output directory for debug rasters and metadata paths.
+    """
     
     #===========================================================================
     # defaults
@@ -705,9 +816,29 @@ def _dp_decay(dem_fine_xr, wse_fine_xr,
     return decay_master_ar, meta_d
 
 
-def _01_resamp(dem_fine_xr, wse_coarse_xr, to_gtiff, upd_wet, 
-               write_meta=False, 
-               debug=False, phaseName='pHase', **kwargs):
+def _01_resamp(
+    dem_fine_xr,
+    wse_coarse_xr,
+    to_gtiff,
+    upd_wet,
+    write_meta=False,
+    debug=False,
+    phaseName="pHase",
+    **kwargs,
+):
+    """Resample coarse WSE to the fine DEM grid.
+
+    Parameters
+    ----------
+    dem_fine_xr : xarray.DataArray
+        Target fine-resolution raster defining the output grid.
+    wse_coarse_xr : xarray.DataArray
+        Coarse-resolution WSE raster to resample.
+    to_gtiff : callable
+        Helper used to write debug rasters.
+    upd_wet : callable
+        Callback to update wet-cell metadata by phase.
+    """
     
     
     wse_fine_xr1 = resample_match_xr(wse_coarse_xr, dem_fine_xr, resampling=Resampling.bilinear)
@@ -722,9 +853,31 @@ def _01_resamp(dem_fine_xr, wse_coarse_xr, to_gtiff, upd_wet,
     return wse_fine_xr1
 
 
-def _02_wetPartials(wse_fine_xr1, dem_fine_xr, 
-                    to_gtiff, upd_wet,
-                    write_meta=False, debug=__debug__, log=None, **kwargs):
+def _02_wetPartials(
+    wse_fine_xr1,
+    dem_fine_xr,
+    to_gtiff,
+    upd_wet,
+    log,
+    write_meta=False,
+    debug=__debug__,
+    **kwargs,
+):
+    """Mask wet cells that fall at or below local terrain.
+
+    Parameters
+    ----------
+    wse_fine_xr1 : xarray.DataArray
+        Fine-resolution resampled WSE from phase 01.
+    dem_fine_xr : xarray.DataArray
+        Fine-resolution DEM aligned with `wse_fine_xr1`.
+    to_gtiff : callable
+        Helper used to write debug rasters.
+    upd_wet : callable
+        Callback to update wet-cell metadata by phase.
+    log : logging.Logger
+        Logger for phase-level diagnostics.
+    """
     #===========================================================================
     # defaults
     #===========================================================================
@@ -762,11 +915,56 @@ def _02_wetPartials(wse_fine_xr1, dem_fine_xr,
 
 
 #@memory_profiler.profile 
-def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr, 
-                    downscale, distance_fill, distance_fill_method,                    
-                    decay_method_d, dp_coarse_pixel_max, m_to_rad, pixel_size_m,
-                     to_gtiff,upd_wet,
-                    write_meta=False, debug=__debug__, log=None, meta_d=dict(), out_dir=None):
+def _03_dryPartials(
+    wse_fine_xr2,
+    dem_fine_xr,
+    wse_coarse_xr,
+    downscale,
+    distance_fill,
+    distance_fill_method,
+    decay_method_d,
+    dp_coarse_pixel_max,
+    m_to_rad,
+    pixel_size_m,
+    to_gtiff,
+    upd_wet,
+    log,
+    write_meta=False,
+    debug=__debug__,
+    meta_d=dict(),
+    out_dir=None,
+):
+    """Grow dry partials using distance fill and optional decay.
+
+    Parameters
+    ----------
+    wse_fine_xr2 : xarray.DataArray
+        Wet-partial-filtered fine-resolution WSE.
+    dem_fine_xr : xarray.DataArray
+        Fine-resolution DEM aligned to the target grid.
+    wse_coarse_xr : xarray.DataArray
+        Coarse WSE used by terrain-penalty fill mode.
+    downscale : int
+        Integer ratio between coarse and fine grid cell sizes.
+    distance_fill : str
+        Dry-fill strategy (for example, `"neutral"` or `"terrain_penalty"`).
+    distance_fill_method : str
+        `scipy.ndimage` distance transform method name.
+    decay_method_d : dict[str, dict]
+        Decay method configuration mapping.
+    dp_coarse_pixel_max : int or None
+        Optional max growth distance in coarse-pixel units.
+    m_to_rad : float
+        Meter-to-grid conversion factor.
+    pixel_size_m : float
+        Mean fine-grid pixel size in meters.
+    to_gtiff : callable
+        Helper used to write debug rasters.
+    upd_wet : callable
+        Callback to update wet-cell metadata by phase.
+    log : logging.Logger
+        Logger for phase-level diagnostics.
+    """
     
     phaseName = '03_dp'
     log.info(f'\n\n{phaseName} w/ distance_fill={distance_fill}\n' +\
@@ -891,7 +1089,19 @@ def _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr,
 #@memory_profiler.profile 
 
 def filter_isolated(source_bar, anchor_bar, log, debug=True):
-    """remove isolated pixels from a source image using a target image"""
+    """Remove isolated source regions that do not connect to anchor wet cells.
+
+    Parameters
+    ----------
+    source_bar : numpy.ndarray
+        Boolean mask of candidate wet cells after dry-partial growth.
+    anchor_bar : numpy.ndarray
+        Boolean mask of anchor wet cells preserved from wet partials.
+    log : logging.Logger
+        Logger used for diagnostics.
+    debug : bool
+        If True, run additional safety assertions.
+    """
     
     #precheck
     if debug:
@@ -936,30 +1146,36 @@ def filter_isolated(source_bar, anchor_bar, log, debug=True):
     
     return connected_bar, meta_d
 
-def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
-                          
-                distance_fill='neutral',
-                distance_fill_method='distance_transform_cdt',
-                
-                decay_method_d={
-                    'linear':dict(decay_frac=0.001),
-                    },
- 
-                dp_coarse_pixel_max=10,
-                
-                as_wsh=False, coarse_shape=None,
-                          
-                 logger=None,
-                 write_meta=True, meta_d=dict(), wet_d=dict(),
-                 debug=__debug__,
-                 out_dir=None,
-                 ):
+def downscale_costGrow_xr(
+    dem_fine_xr,
+    wse_coarse_xr,
+    logger,
+    distance_fill="neutral",
+    distance_fill_method="distance_transform_cdt",
+    decay_method_d={
+        "linear": dict(decay_frac=0.001),
+    },
+    dp_coarse_pixel_max=10,
+    as_wsh=False,
+    coarse_shape=None,
+    write_meta=True,
+    meta_d=dict(),
+    wet_d=dict(),
+    debug=__debug__,
+    out_dir=None,
+):
     """
     downscale a coarse WSE grid using costGrow algos and xarray
     
-    params
-    --------
-    distance_fill: str, default 'neutral'
+    Parameters
+    ----------
+    dem_fine_xr : xarray.DataArray
+        Fine-resolution DEM defining the output grid and mask.
+    wse_coarse_xr : xarray.DataArray
+        Coarse WSE raster covering the same extent as `dem_fine_xr`.
+    logger : logging.Logger
+        Parent logger; function uses `logger.getChild("costGrow")`.
+    distance_fill : str, default 'neutral'
         type of cost surface to use
             neutral: nn flat surface extrapolation
             terrain_penalty: cost distance extrapolation with terrain penalty
@@ -980,7 +1196,7 @@ def downscale_costGrow_xr(dem_fine_xr, wse_coarse_xr,
     to_wsh: bool
         return WSH (instead of WSE)
         
-    coarse_shape: tuple
+    coarse_shape: tuple[int, int] or None
         optional in case the wse_coarse_xr has already been reprojected
         
             
