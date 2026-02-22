@@ -212,8 +212,7 @@ RUN --mount=type=cache,target=/opt/conda/pkgs,sharing=locked \
     mamba install -yv --strict-channel-priority --name "${DEV_CONDA_NAME}" --file /tmp/environment_dev.yml && \
     rm -f /tmp/environment_dev.yml
 
-# ensure non-login commands resolve to the dev env in this target
-ENV PATH="${CONDA_DIR}/envs/${DEV_CONDA_NAME}/bin:${CONDA_DIR}/condabin:${PATH}"
+ 
 
 RUN conda env config vars set PYTHONPATH=/workspace --name "${DEV_CONDA_NAME}"
 
@@ -232,7 +231,6 @@ RUN conda env config vars set PYTHONPATH=/workspace --name "${DEV_CONDA_NAME}"
 USER ${USER_UID}:${USER_GID}
   
 # set default conda environment  
-#NOTE: because the user already existed, the --target=deploy changes to their .bashrc need to be propagated
-RUN echo ". ${CONDA_DIR}/etc/profile.d/conda.sh && conda activate ${DEV_CONDA_NAME}" >> ~/.bashrc
+ 
 
 ENTRYPOINT ["/bin/bash", "-lc"]
