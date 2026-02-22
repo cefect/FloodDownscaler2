@@ -1,0 +1,28 @@
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - numpy
+  - pandas
+  #- scipy
+  - rasterio
+  - geopandas
+  - openpyxl
+  #- numba
+  #- cudatoolkit
+  #- colorama
+  #- pyyaml
+  #- xarray
+  #- dask
+  #- numbagg
+  - rioxarray
+  - xlsxwriter
+  - scikit-image
+  - xarray
+  - tqdm
+  - pytest
+  - pip
+ 
+ 
+    
+ 

@@ -33,8 +33,7 @@ current_wdir = os.getcwd() #WBT moves htis
 from ..parameters import log_level
 
 """WARNING... something here changes the directory?"""
- 
-from ...whiteboxtools.whitebox_tools import WhiteboxTools
+from whitebox import WhiteboxTools
 wbt = WhiteboxTools()
 
 from definitions import wbt_dir, wrk_dir

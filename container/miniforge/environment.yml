@@ -23,6 +23,8 @@ dependencies:
   - tqdm
   - pytest
   - pip
+  # whitebox==2.2.* still imports pkg_resources at runtime
+  - setuptools<81
   - pip:
     - whitebox==2.2.*
  

@@ -1,4 +1,4 @@
-FROM condaforge/miniforge3:25.3.1-0 AS base
+FROM cefect/wbt:v2.4.0.1 AS base
 #https://github.com/conda-forge/miniforge-images/blob/master/ubuntu/Dockerfile
 # base environment is pre-activated
 # these are pre-isntalled: wget bzip2 ca-certificates, git, tini
@@ -7,13 +7,6 @@ FROM condaforge/miniforge3:25.3.1-0 AS base
 SHELL ["/bin/bash", "-o", "pipefail", "-lc"]
 
  
-
-
-
-
-
-
-
 
 #make permissive to any non-root user
 ARG TARGET_DIRS="/workspace /opt/conda"
@@ -53,15 +46,23 @@ RUN echo 'umask 000' >> /etc/bash.bashrc && \
 FROM base AS deploy
 
 # ---- 2) Build environments as root (fast, cacheable)
-COPY container/environment.yml /tmp/environment.yml
+COPY container/wbt/environment.yml /tmp/environment.yml
 
-ARG env_name=deploy
+ARG CONDA_NAME=deploy
+ENV CONDA_NAME=${CONDA_NAME}
 
 RUN --mount=type=cache,target=/opt/conda/pkgs,sharing=locked \
     --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     conda config --set channel_priority strict && \
-    mamba env create -yv --strict-channel-priority --name ${env_name} --file /tmp/environment.yml && \
+    conda rename -y -n wbt "${CONDA_NAME}" && \
+    mamba install -yv --strict-channel-priority --name "${CONDA_NAME}" --file /tmp/environment.yml --freeze-installed && \
     rm -f /tmp/environment.yml
+
+# deploy smoke test: whitebox must work
+RUN conda run -n "${CONDA_NAME}" python /workspace/container/smoke_test_whitebox.py
+
+# deploy smoke test: seaborn must not exist in deploy env
+RUN conda run -n "${CONDA_NAME}" python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('seaborn') is None else 1)"
 
 
 # activate the environment by default for all users
@@ -70,8 +71,8 @@ RUN cat <<EOF >/etc/profile.d/conda_env.sh
 # Activate the env for all login shells.
 if [ -f "${CONDA_DIR}/etc/profile.d/conda.sh" ]; then
   . "${CONDA_DIR}/etc/profile.d/conda.sh"
-  if [ "\${CONDA_DEFAULT_ENV:-}" != "${env_name}" ]; then
-    conda activate "${env_name}"
+  if [ "\${CONDA_DEFAULT_ENV:-}" != "${CONDA_NAME}" ]; then
+    conda activate "${CONDA_NAME}"
   fi
 fi
 EOF
@@ -106,18 +107,9 @@ FROM deploy AS dev
  
  
 
-
-
-
- 
-
-
-
- 
-
-
-
 #configure my dev user
+ARG CONDA_NAME=deploy
+ARG DEV_CONDA_NAME=dev
 ARG USERNAME=cefect
 ARG USER_UID=1000
 ARG USER_GID=1000
@@ -156,16 +148,29 @@ RUN  --mount=type=cache,target=/var/cache/apt,sharing=locked \
        strace \
        gdb
 
+# add the dev user to sudo group and keep passwordless sudo
+RUN usermod -aG sudo "${USERNAME}" || true
+
 # configure passwordless sudo in a separate layer for clearer cache boundaries
 RUN echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-${USERNAME} \
     && chmod 0440 /etc/sudoers.d/90-${USERNAME}
+
+# use user-owned cache/config paths to avoid pip cache permission warnings
+# ENV XDG_CONFIG_HOME=/home/${USERNAME}/.config \
+#     XDG_CACHE_HOME=/home/${USERNAME}/.cache \
+#     MPLCONFIGDIR=/home/${USERNAME}/.config/matplotlib \
+#     PIP_CACHE_DIR=/home/${USERNAME}/.cache/pip
 
 # Give the dev user ownership of places they'll modify (including conda dirs)
 RUN set -eux; \
     install -d -o ${USER_UID} -g ${USER_GID} -m 0755 /workspace; \
     install -d -o ${USER_UID} -g ${USER_GID} -m 1777 /tmp /var/tmp; \
     mkdir -p /home/${USERNAME}; \
-    chown -R ${USER_UID}:${USER_GID} /home/${USERNAME}; 
+    chown -R ${USER_UID}:${USER_GID} /home/${USERNAME}; \
+    install -d -o ${USER_UID} -g ${USER_GID} -m 0755 /home/${USERNAME}/.cache; \
+    install -d -o ${USER_UID} -g ${USER_GID} -m 0755 /home/${USERNAME}/.cache/starship; \
+    install -d -o ${USER_UID} -g ${USER_GID} -m 0755 /home/${USERNAME}/.cache/pip; \
+    install -d -o ${USER_UID} -g ${USER_GID} -m 0755 /home/${USERNAME}/.config/matplotlib;
 
 
 
@@ -192,17 +197,16 @@ RUN set -eux; \
 
 
 
-# setup analysis conda environment
-COPY container/environment.yml /tmp/environment.yml
-COPY container/environment_analysis.yml /tmp/environment_analysis.yml
+# setup dev conda environment
+COPY container/wbt/environment_dev.yml /tmp/environment_dev.yml
 
 RUN --mount=type=cache,target=/opt/conda/pkgs,sharing=locked \
     --mount=type=cache,target=/root/.cache/pip,sharing=locked \
-    mamba env create -yv --strict-channel-priority --name analysis --file /tmp/environment.yml && \
-    mamba env update -y --name analysis --file /tmp/environment_analysis.yml && \
-    rm -f /tmp/environment.yml /tmp/environment_analysis.yml
+    conda create -yv --name "${DEV_CONDA_NAME}" --clone "${CONDA_NAME}" && \
+    mamba install -yv --strict-channel-priority --name "${DEV_CONDA_NAME}" --file /tmp/environment_dev.yml && \
+    rm -f /tmp/environment_dev.yml
 
-RUN conda env config vars set PYTHONPATH=/workspace --name analysis
+RUN conda env config vars set PYTHONPATH=/workspace --name "${DEV_CONDA_NAME}"
 
 # Install pipx system-wide into the base environment
 # pipx docs recommend installing via pip and ensuring ~/.local/bin is on PATH:contentReference[oaicite:0]{index=0}
@@ -220,6 +224,6 @@ USER ${USER_UID}:${USER_GID}
   
 # set default conda environment  
 #NOTE: because the user already existed, the --target=deploy changes to their .bashrc need to be propagated
-RUN echo ". ${CONDA_DIR}/etc/profile.d/conda.sh && conda activate ${env_name}" >> ~/.bashrc
+RUN echo ". ${CONDA_DIR}/etc/profile.d/conda.sh && conda activate ${DEV_CONDA_NAME}" >> ~/.bashrc
 
 ENTRYPOINT ["/bin/bash", "-lc"]
