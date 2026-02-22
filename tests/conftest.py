@@ -29,6 +29,7 @@ if write_to_test_data:
 # TEST_DATA------------
 #===============================================================================
 """the test data library is kept separate (should make available for download)
+see `c:\GD\10_IO\fdsc2\test_data\`
 contains these cases:
     case_01\
     case_ahr\
