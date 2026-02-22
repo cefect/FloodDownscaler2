@@ -120,7 +120,7 @@ def _distance_fill_cost_terrain(
     log : logging.Logger
         Logger for step-level debug statements.
     cd_backend : str
-        Cost-distance backend identifier (`"wbt"` or `"skimage"`).
+        Cost-distance backend identifier (`"wbt"`, `"pcraster"`, or `"skimage"`).
     out_dir : str or None
         Optional directory for backend intermediates.
     m_to_rad : float
@@ -181,6 +181,14 @@ def _distance_fill_cost_terrain(
         
         wse_filled_xr = _distance_fill_cost_wbt(wse_fine_xr, cost_xr, log=log.getChild(cd_backend), 
                         out_dir = os.path.join(get_od(out_dir), 'wbt'), **kwargs)
+    elif cd_backend=='pcraster':
+        #spreadzone-based cost allocation on the in-memory arrays
+        wse_filled_xr = _distance_fill_cost_pcraster(
+            wse_fine_xr,
+            cost_xr,
+            log=log.getChild(cd_backend),
+            **kwargs,
+        )
     else:
         raise KeyError(cd_backend)
  
@@ -350,6 +358,85 @@ def _distance_fill_cost_wbt(
  
  
 
+
+
+def _distance_fill_cost_pcraster(
+    wse_xr,
+    cost_xr,
+    log,
+):
+    """Fill masked WSE cells with PCRaster `spreadzone` cost allocation.
+
+    Parameters
+    ----------
+    wse_xr : xarray.DataArray
+        WSE raster where non-null cells act as source locations.
+    cost_xr : xarray.DataArray
+        Non-negative movement-cost raster aligned to `wse_xr`.
+    log : logging.Logger
+        Logger for diagnostics.
+    """
+
+    assert wse_xr.shape == cost_xr.shape
+    assert np.all(np.isnan(cost_xr.data) | (cost_xr.data >= 0.0))
+
+    import pcraster as pcr
+
+    nodata = wse_xr.rio.nodata
+    wet_bar = wse_xr.notnull().data
+    if not wet_bar.any():
+        raise AssertionError("wse_xr has no wet/source cells")
+    if wet_bar.all():
+        log.debug("no dry cells detected; returning input")
+        return wse_xr.copy()
+
+    # Set PCRaster clone from the incoming xarray grid metadata.
+    rows, cols = wse_xr.shape
+    west, _, _, north = wse_xr.rio.bounds()
+    res_x, res_y = wse_xr.rio.resolution()
+    cell_size = float(np.abs([res_x, res_y]).mean())
+    pcr.setclone(int(rows), int(cols), cell_size, float(west), float(north))
+
+    # Build source ids: wet/source cells get unique ids, dry cells are zero.
+    source_id_ar = np.zeros(wse_xr.shape, dtype=np.int32)
+    source_idx_ar = np.flatnonzero(wet_bar.ravel())
+    source_id_ar.ravel()[source_idx_ar] = np.arange(1, source_idx_ar.size + 1, dtype=np.int32)
+
+    # Lookup table for mapping spreadzone source ids back to WSE values.
+    source_value_ar = wse_xr.data.ravel()[source_idx_ar].astype(np.float64)
+    lookup_ar = np.full(source_idx_ar.size + 1, np.nan, dtype=np.float64)
+    lookup_ar[1:] = source_value_ar
+
+    # Build friction map and treat missing costs as barriers.
+    cost_mv = -9999.0
+    cost_ar = cost_xr.data.astype(np.float32, copy=True)
+    invalid_cost_bar = np.logical_or(~np.isfinite(cost_ar), cost_ar < 0.0)
+    cost_ar[invalid_cost_bar] = cost_mv
+
+    points_map = pcr.numpy2pcr(pcr.Nominal, source_id_ar, -9999)
+    friction_map = pcr.numpy2pcr(pcr.Scalar, cost_ar, cost_mv)
+
+    log.debug("pcraster.spreadzone")
+    zone_map = pcr.spreadzone(points_map, 0, friction_map)
+    zone_ar = pcr.pcr2numpy(zone_map, 0).astype(np.int64, copy=False)
+
+    max_zone = int(np.max(zone_ar))
+    if max_zone > source_idx_ar.size:
+        raise AssertionError(f"spreadzone returned source id {max_zone} > {source_idx_ar.size}")
+
+    filled_ar = lookup_ar[zone_ar]
+    filled_ar[invalid_cost_bar] = np.nan
+
+    wse_filled_xr = xr.DataArray(
+        filled_ar,
+        coords=wse_xr.coords,
+        dims=wse_xr.dims,
+        attrs=wse_xr.attrs.copy(),
+        name=wse_xr.name,
+    )
+
+    log.debug("finished")
+    return wse_filled_xr.rio.write_nodata(nodata).rio.write_crs(wse_xr.rio.crs)
 
 
 def _distance_fill(
@@ -922,6 +1009,7 @@ def _03_dryPartials(
     downscale,
     distance_fill,
     distance_fill_method,
+    cd_backend,
     decay_method_d,
     dp_coarse_pixel_max,
     m_to_rad,
@@ -950,6 +1038,8 @@ def _03_dryPartials(
         Dry-fill strategy (for example, `"neutral"` or `"terrain_penalty"`).
     distance_fill_method : str
         `scipy.ndimage` distance transform method name.
+    cd_backend : str
+        Terrain cost-distance backend identifier for `distance_fill="terrain_penalty"`.
     decay_method_d : dict[str, dict]
         Decay method configuration mapping.
     dp_coarse_pixel_max : int or None
@@ -1019,7 +1109,7 @@ def _03_dryPartials(
     elif distance_fill == 'terrain_penalty':
         wse_filled_xr = _distance_fill_cost_terrain(wse_fine_xr2, dem_fine_xr, 
             wse_coarse_xr, log=log.getChild(phaseName), 
-            out_dir=out_dir, m_to_rad=m_to_rad)
+            out_dir=out_dir, m_to_rad=m_to_rad, cd_backend=cd_backend)
         wse_filled_ar = wse_filled_xr.data
     else:
         raise KeyError(distance_fill)
@@ -1152,6 +1242,7 @@ def downscale_costGrow_xr(
     logger,
     distance_fill="neutral",
     distance_fill_method="distance_transform_cdt",
+    cd_backend="wbt",
     decay_method_d={
         "linear": dict(decay_frac=0.001),
     },
@@ -1183,6 +1274,8 @@ def downscale_costGrow_xr(
     
     distance_fill_method: str, default 'distance_fill_method'
         scipy.ndimage method to apply. see _distance_fill()
+    cd_backend : str, default 'wbt'
+        Terrain cost-distance backend used only when `distance_fill='terrain_penalty'`.
         
         
     decay_method_d: str
@@ -1355,7 +1448,7 @@ def downscale_costGrow_xr(
     # 03 dry partials--------
     #===========================================================================
     wse_fine_xr3 = _03_dryPartials(wse_fine_xr2, dem_fine_xr, wse_coarse_xr, 
-                    downscale, distance_fill, distance_fill_method,                    
+                    downscale, distance_fill, distance_fill_method, cd_backend,
                     decay_method_d, dp_coarse_pixel_max, m_to_rad, pixel_size_m,
                      to_gtiff,upd_wet,**skwargs)
         

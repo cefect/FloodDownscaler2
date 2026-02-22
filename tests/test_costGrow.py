@@ -80,7 +80,7 @@ def test_distance_fill(wse_fine_xr, _method, params, tmpdir):
     'case_toy1',
     #'case_f3n2e100', #EPSG:4326. 9000x9000, 3:1
     ]) 
-@pytest.mark.parametrize('cd_backend', ['wbt'])
+@pytest.mark.parametrize('cd_backend', ['wbt', 'pcraster'])
 def test_distance_fill_cost_terrain(wse_fine_xr,dem_fine_xr, wse_coarse_xr, 
                                     tmpdir, logger, cd_backend):
  
