@@ -1,5 +1,6 @@
 """Shared validation helpers for CostGrow notebook workflows."""
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from rasterio.warp import Resampling, reproject
@@ -234,3 +235,106 @@ def build_metrics_table(obs_depth_m, pred_depth_by_name, domain_mask, wet_thresh
                 metrics_df[f"Delta_{left}_minus_{right}"] = metrics_df[left] - metrics_df[right]
 
     return metrics_df
+
+
+def plot_hist_raster_grid(plot_specs, title, bins=60, metrics_df=None):
+    """Plot histogram+raster diagnostics and append metrics text for each panel.
+
+    Parameters
+    ----------
+    plot_specs : list[dict]
+        Plot configuration dictionaries with:
+        `name` (str), `arr` (numpy.ndarray-like), `cmap` (str),
+        `use_dry_mask` (bool), `dry_thresh` (float|None),
+        `is_depth` (bool), and optional `metric_key` (str).
+    title : str
+        Figure-level title.
+    bins : int
+        Histogram bin count.
+    metrics_df : pandas.DataFrame or None
+        Metrics table from `build_metrics_table` (metrics as index, run names as columns).
+    """
+    # Build a two-column layout: histogram on the left, raster on the right.
+    fig, axes = plt.subplots(nrows=len(plot_specs), ncols=2, figsize=(10, 4 * len(plot_specs)))
+    if len(plot_specs) == 1:
+        axes = np.array([axes])
+
+    for row_idx, spec in enumerate(plot_specs):
+        # Pull required config for the current row.
+        name = spec["name"]
+        arr = np.asarray(spec["arr"])
+        cmap = spec["cmap"]
+        use_dry_mask = bool(spec["use_dry_mask"])
+        dry_thresh = spec["dry_thresh"]
+        is_depth = bool(spec.get("is_depth", False))
+        metric_key = spec.get("metric_key", name)
+
+        # Extract finite values for robust stats and histogram generation.
+        vals = arr[np.isfinite(arr)]
+
+        # For depth histograms only, mask exact zero-depth values to reduce dry-cell dominance.
+        if is_depth:
+            vals_hist = vals[~np.isclose(vals, 0.0)]
+        else:
+            vals_hist = vals
+
+        ax_hist = axes[row_idx, 0]
+        ax_raster = axes[row_idx, 1]
+
+        if vals_hist.size:
+            ax_hist.hist(vals_hist, bins=bins, color="steelblue", alpha=0.9)
+            if use_dry_mask and dry_thresh is not None:
+                ax_hist.axvline(dry_thresh, color="red", linestyle="--", linewidth=1.5)
+            stat_text = (
+                f"shape: {arr.shape}\n"
+                f"hist_n: {vals_hist.size:,}\n"
+                f"min: {vals_hist.min():.3f}\n"
+                f"max: {vals_hist.max():.3f}\n"
+                f"mean: {vals_hist.mean():.3f}\n"
+                f"std: {vals_hist.std():.3f}"
+            )
+        else:
+            stat_text = f"shape: {arr.shape}\n(no finite values)"
+
+        # Append all metric rows for this panel when a matching column exists.
+        if metrics_df is not None and metric_key in metrics_df.columns:
+            metric_text_l = []
+            for metric_name in metrics_df.index:
+                metric_val = metrics_df.at[metric_name, metric_key]
+                if pd.isna(metric_val):
+                    metric_text_l.append(f"{metric_name}: nan")
+                elif "count" in metric_name:
+                    metric_text_l.append(f"{metric_name}: {int(metric_val):,}")
+                else:
+                    metric_text_l.append(f"{metric_name}: {float(metric_val):.6f}")
+            stat_text = stat_text + "\n" + "\n".join(metric_text_l)
+
+        ax_hist.set_title(f"{name} histogram")
+        ax_hist.set_xlabel("Value")
+        ax_hist.set_ylabel("Count")
+        ax_hist.grid(color="lightgrey", linestyle="-", linewidth=0.7)
+        ax_hist.text(
+            0.98,
+            0.95,
+            stat_text,
+            transform=ax_hist.transAxes,
+            fontsize=8,
+            va="top",
+            ha="right",
+            bbox={"facecolor": "white", "alpha": 0.7, "edgecolor": "none"},
+        )
+
+        # Optionally hide dry cells in map view to emphasize wet structure.
+        if use_dry_mask and dry_thresh is not None:
+            raster_arr = np.ma.masked_where(arr < dry_thresh, arr)
+        else:
+            raster_arr = arr
+
+        im = ax_raster.imshow(raster_arr, cmap=cmap)
+        ax_raster.set_title(f"{name} raster")
+        ax_raster.set_axis_off()
+        fig.colorbar(im, ax=ax_raster, fraction=0.046, pad=0.04)
+
+    fig.suptitle(title, fontsize=12)
+    plt.tight_layout()
+    plt.show()
