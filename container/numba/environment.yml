@@ -1,0 +1,32 @@
+channels:
+  - numba
+  - conda-forge
+channel_priority: strict
+dependencies:
+  # --- core ---
+  - python=3.12.12
+  - pip=26.0.1
+  - numpy=2.4.2
+
+  # --- prototype deps ---
+  - numba=0.64.0
+  # llvmlite will be pulled in by numba, but pin loosely for clarity.
+  - llvmlite>=0.46,<0.47
+
+  # --- geospatial/xarray stack for the drop-in replacement ---
+  - xarray
+  - rioxarray
+  - rasterio
+  - pyproj
+
+  # Optional but often helpful for I/O and debugging:
+  - ipython
+  - tqdm
+
+  # ---- pip-frozen "base" packages you provided ----
+  - pip:
+
+
+      # Numba + coverage.py compatibility: old coverage can break `import numba`.
+      # (Safe to include even if you don't use coverage)
+      - coverage>=7.6.1
