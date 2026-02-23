@@ -1,12 +1,12 @@
 # Container for numba experiments
 
-TODO: run the experiments and test this. 
+TODO: run the experiments and test this.
 
 ## Build image (deploy target)
 From repo root:
 
 ```bash
-tag="v0.1"
+tag="v0.2"
 export IMAGE_NAME_DEPLOY="cefect/fdsc2:numba-deploy-${tag}"
 
 docker buildx build \
@@ -21,7 +21,7 @@ docker buildx build \
 From repo root:
 
 ```bash
-tag="v0.1"
+tag="v0.2"
 export IMAGE_NAME_DEV="cefect/fdsc2:numba-dev-${tag}"
 
 docker buildx build \
@@ -36,16 +36,22 @@ docker buildx build \
 The `deploy` target creates conda env `deploy` from `container/numba/environment.yml`.
 
 ```bash
-docker run --rm -v "$PWD/container/numba:/out" "${IMAGE_NAME_DEPLOY}" bash -lc \
-  "micromamba run -n deploy python -m pip freeze > /out/pip-freeze-deploy.txt && \
-   micromamba env export -n deploy > /out/conda-env-deploy.lock.yml"
+docker run --rm -u "$(id -u)":"$(id -g)" \
+  -e HOME=/tmp \
+  -e XDG_CACHE_HOME=/tmp/.cache \
+  -v "$PWD/container/numba:/out" "${IMAGE_NAME_DEPLOY}" bash -lc \
+  "conda run -n deploy python -m pip freeze > /out/pip-freeze-deploy.txt && \
+   conda env export -n deploy > /out/conda-env-deploy.lock.yml"
 ```
 
 ## Dump installed packages for dev env
-The `dev` target creates a second conda env `dev` by cloning `deploy`, then applies `container/numba/environment_dev.yml`.
+The `dev` target creates a second conda env `dev` by cloning `deploy`, then installs notebook/debug extras in that env.
 
 ```bash
-docker run --rm -v "$PWD/container/numba:/out" "${IMAGE_NAME_DEV}" bash -lc \
-  "micromamba run -n dev python -m pip freeze > /out/pip-freeze-dev.txt && \
-   micromamba env export -n dev > /out/conda-env-dev.lock.yml"
+docker run --rm -u "$(id -u)":"$(id -g)" \
+  -e HOME=/tmp \
+  -e XDG_CACHE_HOME=/tmp/.cache \
+  -v "$PWD/container/numba:/out" "${IMAGE_NAME_DEV}" bash -lc \
+  "conda run -n dev python -m pip freeze > /out/pip-freeze-dev.txt && \
+   conda env export -n dev > /out/conda-env-dev.lock.yml"
 ```
