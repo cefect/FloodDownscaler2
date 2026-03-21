@@ -48,7 +48,7 @@ TODO: make installation more user-friendly (e.g., containerization or setup-tool
 Installing FloodDownscaler2 is complex and customizeable and requires three basic steps:
 - build a python environment per ./environment.yml
 - create and customize a ./definitions.py file (see below)
-- install/setup whitebox-tools v2.2.0 (see below)
+- install/setup whitebox-tools (see below)
 
 Once setup is complete, its highly advisable to test your install by updating/running ./example.bat
 Typically, I build a conda/miniforge environment in windows ./env and write a batch script to activate this (`./env/conda_activate.bat`)
@@ -57,8 +57,24 @@ Typically, I build a conda/miniforge environment in windows ./env and write a ba
 Some of the functions depend on whitebox-tools (wbt) python API. For these to work, installing FloodDownscaler2 requires installing whitebox-tools (if you haven't already) and telling FloodDownscaler2 where to find it. Below is some guidance/instructions for configuring wbt; however, there are a few ways to do this and not all ways work on all systems. 
 
 #### wbt is already installed
-ammend the `wbt_dir` variable in `definitions.py` to point to the directory contining your  whitebox_tools.exe 
-ammend your PYTHONPATH as shown below
+set an environment variable to point to your whitebox-tools executable location:
+- preferred: `FDSC_WBT_DIR`
+- fallbacks recognized by this repo: `WHITEBOXTOOLS_DIR`, `WBT_DIR`
+
+You can set either:
+- the directory containing `whitebox_tools` (or `whitebox_tools.exe` on Windows), or
+- the full executable path.
+
+Examples:
+```bash
+# Linux/macOS
+export FDSC_WBT_DIR="/path/to/whitebox-tools/target/release"
+
+# Windows (PowerShell)
+$env:FDSC_WBT_DIR="L:\09_REPOS\05_FORKS\whitebox-tools\target\release"
+```
+
+If no env var is set (or it is invalid), FloodDownscaler2 falls back to the executable bundled by the installed `whitebox` Python package.
 
 #### install wbt from precompiled binary
 compiled binaries are available [here](https://www.whiteboxgeo.com/download-direct/) for common systems. 
@@ -84,13 +100,13 @@ git mv whitebox-tools whiteboxtools
 
 
 ### PYTHONPATH
-The project requires the PYTHONPATH to include the source directory, and two whitebox-tools directories. 
+The project requires the PYTHONPATH to include the source directory.
 
-Below is an example for a project that builds whitebox-tools from scratch. Replace PROJECT_DIR_NAME with the path to your repo. The last directory is created by building whitebox-tools.
+If you are using a source-built whitebox-tools executable, set `FDSC_WBT_DIR` instead of extending `PYTHONPATH`.
+
+Below is an example for a project path:
 ```
 PROJECT_DIR_NAME
-PROJECT_DIR_NAME\whitebox-tools
-PROJECT_DIR_NAME\whitebox-tools\target\release 
 ```
 
 ### definitions.py
@@ -103,9 +119,6 @@ wrk_dir = r'L:\10_IO\fdsc2'
 
 #test source data directory
 test_data_dir = r'l:\10_IO\fdsc2\test_data'
-
-#whitebox-tools exe location
-wbt_dir = r'l:\09_REPOS\05_FORKS\whitebox-tools\target\release'
  
 ```
 

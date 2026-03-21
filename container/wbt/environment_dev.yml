@@ -1,0 +1,31 @@
+channels:
+  - conda-forge
+dependencies:
+  # - python
+  #- geoviews
+  # - geopandas
+  - jupyterlab
+  #- hvplot
+  #- panel
+  #- bokeh
+  - notebook
+  - pyproj
+  - shapely
+  # - pandas
+  # - numpy
+  # - matplotlib
+  - ipykernel   # to register this env as a Jupyter kernel
+  #- black #linter
+  #- nbqa #linter
+  - contextily
+  - nbdime
+  - seaborn
+  - imageio
+  - matplotlib
+  - colorcet
+  # - tqdm
+  - openpyxl
+  - pip:
+      - palettable
+      - beautifulsoup4
+      - memory-profiler

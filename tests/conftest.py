@@ -12,6 +12,7 @@ import os, pathlib, pytest, logging, sys, tempfile, pickle, copy, warnings
  
 import rioxarray
 import numpy as np
+import xarray as xr
 from ..fdsc.hp.dirz import recursive_file_search
 from ..fdsc.hp.xr import coarsen_dataarray, resample_match_xr, wse_to_wsh_xr, xr_to_GeoTiff
 
@@ -28,7 +29,9 @@ if write_to_test_data:
 #===============================================================================
 # TEST_DATA------------
 #===============================================================================
+# see `c:\GD\10_IO\fdsc2\test_data\`
 """the test data library is kept separate (should make available for download)
+
 contains these cases:
     case_01\
     case_ahr\
@@ -40,7 +43,12 @@ additional 'phase' parameters are used to allow for intermediate test data
 #===============================================================================
 # load from directory
 #===============================================================================
-from definitions import test_data_dir_fdsc as test_data_dir
+# prefer the ported test dataset when present, fallback to definitions path
+ported_test_data_dir = pathlib.Path("tests/data/port")
+if ported_test_data_dir.exists():
+    test_data_dir = str(ported_test_data_dir)
+else:
+    from definitions import test_data_dir_fdsc as test_data_dir
  
 
 print(f'loading test data from \n    {test_data_dir}')
@@ -101,17 +109,43 @@ def _get_xr(caseName, phase, dataName):
     
     fp = d[k2]
     
-    print(f'loading \'{dataName}\' from pickle file\n    {fp}')
-    with open(fp, "rb") as f:
-        da = pickle.load(f)
- 
-    da = da.rio.write_nodata(-9999)    
+    ext = pathlib.Path(fp).suffix.lower()
+    print(f"loading '{dataName}' from file\n    {fp}")
+
+    if ext == ".tif":
+        da = _geoTiff_to_xr(fp)
+    elif ext == ".pkl":
+        with open(fp, "rb") as f:
+            da_raw = pickle.load(f)
+        if not isinstance(da_raw, xr.DataArray):
+            raise TypeError(f"expected DataArray in pickle, got {type(da_raw)}")
+
+        # rebuild to avoid stale serialized rio accessor cache across package versions
+        crs = None
+        try:
+            crs = da_raw.rio.crs
+        except Exception:
+            crs = None
+        da = xr.DataArray(
+            da_raw.data,
+            dims=da_raw.dims,
+            coords=da_raw.coords,
+            attrs=da_raw.attrs,
+            name=da_raw.name,
+        )
+        if crs is not None:
+            da = da.rio.write_crs(crs)
+        da = da.rio.write_nodata(-9999)
+    else:
+        raise TypeError(f"unsupported extension for xarray load: {ext} at {fp}")
         
     """deepcopy is not copying the rio data
     #check it
     da = copy.deepcopy(test_data_lib[caseName][phase][dataName])"""
+    print(f"loaded '{caseName}.{phase}.{dataName}' with \n shape {da.shape} and CRS {da.rio.crs}")
     from ..fdsc.assertions import assert_xr_geoTiff        
     assert_xr_geoTiff(da, msg='%s.%s.%s'%(caseName, phase, dataName))
+      
     
         
     return da
@@ -236,6 +270,5 @@ def wsh_coarse_fp(caseName, wse_coarse_fp, dem_coarse_xr, tmpdir, logger):
 
 
  
-
 
 
